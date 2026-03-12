@@ -1,0 +1,21 @@
+Generate a Great Expectations (GX) JSON array from the spec below.
+Output ONLY a valid JSON array. No markdown, no explanations.
+
+RULES:
+1. First item: `expect_table_columns_to_match_set` with all unique Field Names and `exact_match: true`.
+2. Every other item MUST have `expectation_type` and `kwargs.column`.
+3. Mandatory='Y': add `expect_column_values_to_not_be_null`. For string fields, also add `expect_column_values_to_not_match_regex` with `"regex": "^$"`.
+4. DO NOT use `expect_column_values_to_be_of_type`.
+5. Allowed Values — classify each:
+   a) Fixed enum (e.g. `food_quote`, `topup`, `"X" || "Y"`) → `expect_column_values_to_be_in_set`
+   b) Format pattern (e.g. `LMQ-xxxxxx`, `{{web url}}`, `00001100xxxxxxxx`) → `expect_column_values_to_match_regex`
+   c) Numeric example (`300`, `#.##`, `{{unixtime}}`) → skip, not_null is enough
+   d) Array example (`[ 'auABCD' ]`) → `expect_column_values_to_match_json_schema` with `{{"type":"array"}}` only
+   e) Display text (Thai labels, `฿300`) → `in_set` only if clearly fixed
+6. Type='array': use `expect_column_values_to_match_json_schema` with `{{"type":"array"}}`. Include `"additionalProperties": false`.
+7. DO NOT use `expect_column_values_to_be_json_parseable`.
+8. Row conditions: use `row_condition` + `"condition_parser":"pandas"`. String literals MUST use escaped double quotes.
+9. CRITICAL JSON regex rule: backslash MUST be escaped as double backslash in JSON strings. Example: to match whitespace, write "\\s" as "\\\\s" in JSON. Prefer SIMPLE regex (e.g. "^https?://.*" for URLs, "^[A-Z]+-\\d+$" for IDs) to avoid escape problems.
+
+SPECIFICATION:
+{auto_spec_input}
