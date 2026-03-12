@@ -286,7 +286,7 @@ def extract_failed_from_log(log_data, waived_rules=None):
                 col = kwargs.get("column", "-")
                 if "expect_table" in exp_type_full:
                     col = "-"
-                rule_key = f"{col} ({exp_type})"
+                rule_key = f"{col}|{exp_type_full}"
                 is_waived = rule_key in waived_rules
                 res_data = exp_result.get("result", {})
                 el_count = res_data.get("element_count", 0)
@@ -320,11 +320,11 @@ def get_effective_metrics_from_results(results, waived_rules=None):
             for exp_result in vr_val.get("validation_result", {}).get("results", []):
                 if not exp_result.get("success", False):
                     ec = exp_result.get("expectation_config", {})
-                    et = ec.get("expectation_type", "").replace("expect_column_values_to_", "").replace("expect_table_columns_to_", "table_")
+                    et_full = ec.get("expectation_type", "")
                     c = ec.get("kwargs", {}).get("column", "-")
-                    if "expect_table" in ec.get("expectation_type", ""):
+                    if "expect_table" in et_full:
                         c = "-"
-                    if f"{c} ({et})" not in waived_rules:
+                    if f"{c}|{et_full}" not in waived_rules:
                         has_unwaived = True
                         break
             if has_unwaived:
@@ -353,11 +353,11 @@ def get_tracker_rows(tracker, results, waived_rules=None):
                         passed_exp += 1
                     else:
                         ec = er.get("expectation_config", {})
-                        et = ec.get("expectation_type", "").replace("expect_column_values_to_", "").replace("expect_table_columns_to_", "table_")
+                        et_full = ec.get("expectation_type", "")
                         c = ec.get("kwargs", {}).get("column", "-")
-                        if "expect_table" in ec.get("expectation_type", ""):
+                        if "expect_table" in et_full:
                             c = "-"
-                        if f"{c} ({et})" in waived_rules:
+                        if f"{c}|{et_full}" in waived_rules:
                             passed_exp += 1
             if total_exp > 0:
                 v_copy["Pass/Fail"] = f"{passed_exp}/{total_exp} ({round(passed_exp/total_exp*100)}%)"
@@ -391,10 +391,12 @@ def get_failed_summary(results, waived_rules=None):
                     ec = exp_result.get("expectation_config", {})
                     kwargs = ec.get("kwargs", {})
                     et = ec.get("expectation_type", "").replace("expect_column_values_to_", "").replace("expect_table_columns_to_", "table_")
+                    et_full = ec.get("expectation_type", "")
+                    et = et_full.replace("expect_column_values_to_", "").replace("expect_table_columns_to_", "table_")
                     col = kwargs.get("column", "-")
-                    if "expect_table" in ec.get("expectation_type", ""):
+                    if "expect_table" in et_full:
                         col = "-"
-                    rk = f"{col} ({et})"
+                    rk = f"{col}|{et_full}"
                     if rk not in summary:
                         extra = ""
                         if "regex" in kwargs:
@@ -471,12 +473,12 @@ def generate_batch_pdf(batch):
             for exp_result in expectation_results:
                 is_success = exp_result.get("success", False)
                 exp_config = exp_result.get("expectation_config", {})
-                exp_type = exp_config.get("expectation_type", "")
+                exp_type_full = exp_config.get("expectation_type", "")
                 kwargs = exp_config.get("kwargs", {})
                 col = kwargs.get("column", "-")
-                if "expect_table" in exp_type: col = "-"
+                if "expect_table" in exp_type_full: col = "-"
                 result_data = exp_result.get("result", {})
-                short_type = exp_type.replace("expect_column_values_to_", "").replace("expect_table_columns_to_", "table_")
+                short_type = exp_type_full.replace("expect_column_values_to_", "").replace("expect_table_columns_to_", "table_")
 
                 expected = ""
                 if "regex" in kwargs: expected = kwargs["regex"]
@@ -492,9 +494,8 @@ def generate_batch_pdf(batch):
                     row_info["unexp_count"] = "-"
                     row_info["pct_str"] = "-"
                     row_info["ex_str"] = "-"
-                    row_info["is_waived"] = False
                 else:
-                    rule_key = f"{col} ({short_type})"
+                    rule_key = f"{col}|{exp_type_full}"
                     is_waived = rule_key in waived
                     if is_waived: waive_count += 1
                     else: fail_count_detail += 1
@@ -587,9 +588,10 @@ def generate_batch_pdf(batch):
     if waived:
         waived_rows = ""
         for rule in sorted(list(waived)):
-            parts = rule.split(' (', 1)
+            parts = rule.split('|', 1)
             w_col = parts[0]
-            w_exp = parts[1].rstrip(')') if len(parts) > 1 else ""
+            w_exp = parts[1] if len(parts) > 1 else ""
+            w_exp = w_exp.replace("expect_column_values_to_", "").replace("expect_table_columns_to_", "table_")
             waived_rows += f'<tr class="row-waived"><td><b>{w_col}</b></td><td><span style="color:#7f8c8d;font-family:monospace;">{w_exp}</span></td></tr>'
         waived_rules_html = f"""<h2 style="color:#d35400;">🛑 Waived Rules</h2>
             <table class="failed-summary-table"><thead><tr><th>Column</th><th>Expectation Rule</th></tr></thead>
@@ -1129,6 +1131,39 @@ def pipeline_stream():
                     headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
 
+# --- Migrate old waived rules format to new format ---
+_SHORT_TO_FULL = {
+    "match_regex": "expect_column_values_to_match_regex",
+    "not_match_regex": "expect_column_values_to_not_match_regex",
+    "be_in_set": "expect_column_values_to_be_in_set",
+    "not_be_null": "expect_column_values_to_not_be_null",
+    "be_null": "expect_column_values_to_be_null",
+    "match_json_schema": "expect_column_values_to_match_json_schema",
+    "be_unique": "expect_column_values_to_be_unique",
+    "be_between": "expect_column_values_to_be_between",
+    "be_of_type": "expect_column_values_to_be_of_type",
+    "table_match_set": "expect_table_columns_to_match_set",
+}
+
+def _migrate_waived_rules(waived):
+    """Convert old format 'col (short)' to new format 'col|full_type'."""
+    migrated = set()
+    changed = False
+    for rule in waived:
+        if '|' in rule:
+            migrated.add(rule)  # already new format
+        elif ' (' in rule and rule.endswith(')'):
+            parts = rule.rsplit(' (', 1)
+            col = parts[0]
+            short = parts[1].rstrip(')')
+            full = _SHORT_TO_FULL.get(short, f"expect_column_values_to_{short}")
+            migrated.add(f"{col}|{full}")
+            changed = True
+        else:
+            migrated.add(rule)
+    return migrated, changed
+
+
 @app.route('/results/<batch_id>')
 def results_page(batch_id):
     request._active_page = 'results'
@@ -1140,6 +1175,24 @@ def results_page(batch_id):
 
     results = batch.get("results", [])
     waived = batch.get("waived_rules", set())
+
+    # Auto-migrate old format waived rules
+    waived, migrated = _migrate_waived_rules(waived)
+    if migrated:
+        batch["waived_rules"] = waived
+        # Also update JSON log files
+        for r in results:
+            log_path = r.get("log_filepath")
+            if log_path and os.path.exists(log_path):
+                try:
+                    with open(log_path, 'r', encoding='utf-8') as f:
+                        log_data = json.load(f)
+                    log_data["waived_rules"] = list(waived)
+                    with open(log_path, 'w', encoding='utf-8') as f:
+                        json.dump(log_data, f, indent=2, ensure_ascii=False)
+                except Exception:
+                    pass
+
     metrics = get_effective_metrics_from_results(results, waived)
     tracker_rows = get_tracker_rows(batch.get("tracker", {}), results, waived)
     failed_items = get_failed_summary(results, waived)
