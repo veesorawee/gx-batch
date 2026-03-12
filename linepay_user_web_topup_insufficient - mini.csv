@@ -1,0 +1,40 @@
+event type,Dev status,screen_name,event_category (for BI),target (for BI),placement_id,when,no,group,key,Data type,M,value,TS key,key remark,file_name,folder_name
+pageview,,topup_insufficient,,,topup_insufficient,,1,screen,screen_name,string,Y,topup_insufficient,,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+pageview,,topup_insufficient,,,topup_insufficient,,1,screen,screen_start,bigint,Y,{pageview unixtime},,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+pageview,,topup_insufficient,,,topup_insufficient,,1,screen,screen_url,string,Y,{web url},,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+pageview,,topup_insufficient,,,topup_insufficient,,1,entry,entry_screen,string,Y,food_quote,,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+pageview,,topup_insufficient,,,topup_insufficient,,1,entry,entry_screen_id,string,Y,LMQ-xxxxxx,,LM Quote ID,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+pageview,,topup_insufficient,,,topup_insufficient,,1,screen,source_screen,string,Y,food_quote,,key remark,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+pageview,,topup_insufficient,,,topup_insufficient,,1,screen,source_screen_id,string,Y,LMQ-xxxxxx,,LM Quote ID,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+pageview,,topup_insufficient,,,topup_insufficient,,1,screen,source_screen_id,string,Y,LMQ-xxxxxx,,LM Quote ID,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+pageview,],topup_insufficient,,,topup_insufficient,,1,event,service,string,Y,topup,,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+pageview,],topup_insufficient,,,topup_insufficient,,1,event,audience_list,array,Y,[ ‘auABCD’ ],,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,close,topup_insufficient/quote_popup/close,,1,event,service,string,Y,kyc,,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,close,topup_insufficient/quote_popup/close,,1,event,event_category,string,Y,quote_popup,,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,close,topup_insufficient/quote_popup/close,,1,event,target,string,Y,close,,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,close,topup_insufficient/quote_popup/close,,1,event,popup_title,string,Y,ยอดในวอเล็ตไม่เพียงพอ,,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,close,topup_insufficient/quote_popup/close,,1,event,popup_id,string,N,{popup id or error id} // if any,,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,close,topup_insufficient/quote_popup/close,,1,event,acct_id,string,N,00001100xxxxxxxx,,linepay account number (odd),linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,close,topup_insufficient/quote_popup/close,,1,event,tot_bill_amt,float,Y,#.##,,actual total bill amount,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,close,topup_insufficient/quote_popup/close,,1,event,crn_bal_amt,float,Y,#.##,,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,close,topup_insufficient/quote_popup/close,,1,event,bank_cd,string,N,{bank code},,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,close,topup_insufficient/quote_popup/close,,1,event,payment_method,string,Y,“app_switch” || “odd”,,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,close,topup_insufficient/quote_popup/close,,1,event,mn_system_topup,int,Y,300,,Minimum topup amount,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,close,topup_insufficient/quote_popup/close,,1,event,mn_order_topup,int,Y,102,,Minimum user need to top up to proceed this order,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,close,topup_insufficient/quote_popup/close,,1,event,audience_list,array,Y,[ ‘auABCD’ ],,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,amount,topup_insufficient/quote_popup/amount,,2,event,service,string,Y,kyc,,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,amount,topup_insufficient/quote_popup/amount,,2,event,event_category,string,Y,quote_popup,,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,amount,topup_insufficient/quote_popup/amount,,2,event,target,string,Y,amount,,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,amount,topup_insufficient/quote_popup/amount,,2,event,target_index,int,Y,0,,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,amount,topup_insufficient/quote_popup/amount,,2,event,target_name,string,Y,฿300,,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,amount,topup_insufficient/quote_popup/amount,,2,event,target_amt,float,Y,300,,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,amount,topup_insufficient/quote_popup/amount,,2,event,popup_title,string,Y,ยอดในวอเล็ตไม่เพียงพอ,,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,amount,topup_insufficient/quote_popup/amount,,2,event,popup_id,string,N,{popup id or error id} // if any,,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,amount,topup_insufficient/quote_popup/amount,,2,event,acct_id,string,N,00001100xxxxxxxx,,linepay account number (odd),linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,amount,topup_insufficient/quote_popup/amount,,2,event,tot_bill_amt,float,Y,#.##,,actual total bill amount,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,amount,topup_insufficient/quote_popup/amount,,2,event,crn_bal_amt,float,Y,#.##,,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,amount,topup_insufficient/quote_popup/amount,,2,event,bank_cd,string,N,{bank code},,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,amount,topup_insufficient/quote_popup/amount,,2,event,payment_method,string,Y,“app_switch” || “odd”,,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,amount,topup_insufficient/quote_popup/amount,,2,event,mn_system_topup,int,Y,300,,Minimum topup amount,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,amount,topup_insufficient/quote_popup/amount,,2,event,mn_order_topup,int,Y,102,,Minimum user need to top up to proceed this order,linepay_user/web/topup_insufficient,LINEPAY USER - WEB
+click,Dev status,topup_insufficient,quote_popup,amount,topup_insufficient/quote_popup/amount,,2,event,audience_list,array,Y,[ ‘auABCD’ ],,,linepay_user/web/topup_insufficient,LINEPAY USER - WEB

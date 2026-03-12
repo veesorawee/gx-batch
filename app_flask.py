@@ -62,9 +62,18 @@ app_state = {
 
 
 def push_sse(event_type, data):
-    """Push an SSE event to the queue."""
+    """Push an SSE event to the queue and persist tracker updates."""
     with app_state["sse_lock"]:
         app_state["sse_events"].append((event_type, json.dumps(data)))
+    # Also update the shared tracker so finalized batch has correct status
+    if event_type == "tracker_update":
+        shared = app_state.get("pipeline_shared")
+        if shared and "tracker" in shared:
+            spec = data.get("spec")
+            field = data.get("field")
+            value = data.get("value")
+            if spec and field and spec in shared["tracker"]:
+                shared["tracker"][spec][field] = value
 
 
 def list_files(directory, extension):
@@ -455,8 +464,10 @@ def generate_batch_pdf(batch):
                     <p>❌ No validation rules generated.</p></div>"""
                 continue
 
-            all_rows = ""
+            # Collect rows grouped by column
+            from collections import OrderedDict
             pass_count, fail_count_detail, waive_count = 0, 0, 0
+            col_groups = OrderedDict()  # col -> list of row dicts
             for exp_result in expectation_results:
                 is_success = exp_result.get("success", False)
                 exp_config = exp_result.get("expectation_config", {})
@@ -467,38 +478,55 @@ def generate_batch_pdf(batch):
                 result_data = exp_result.get("result", {})
                 short_type = exp_type.replace("expect_column_values_to_", "").replace("expect_table_columns_to_", "table_")
 
-                extra_info = ""
-                if "regex" in kwargs: extra_info = f'regex: <code>{kwargs["regex"]}</code>'
-                elif "value_set" in kwargs: extra_info = f'set: {kwargs["value_set"]}'
-                elif "column_set" in kwargs: extra_info = f'{len(kwargs["column_set"])} columns'
+                expected = ""
+                if "regex" in kwargs: expected = kwargs["regex"]
+                elif "value_set" in kwargs: expected = str(kwargs["value_set"])
+                elif "column_set" in kwargs: expected = f'{len(kwargs["column_set"])} cols'
+                elif "json_schema" in kwargs: expected = 'schema'
 
+                row_info = {"short_type": short_type, "expected": expected, "is_success": is_success}
                 if is_success:
                     pass_count += 1
-                    detail_cell = f'<span class="pass-text">Pass</span>'
-                    if extra_info: detail_cell += f' — <span class="extra-info">{extra_info}</span>'
-                    all_rows += f'<tr class="row-pass"><td class="status-cell">✅</td><td class="col-cell">{col}</td><td class="exp-cell">{short_type}</td><td class="detail-cell">{detail_cell}</td></tr>'
+                    row_info["status_text"] = "✅ Pass"
+                    row_info["row_class"] = "row-pass"
+                    row_info["unexp_count"] = "-"
+                    row_info["pct_str"] = "-"
+                    row_info["ex_str"] = "-"
+                    row_info["is_waived"] = False
                 else:
                     rule_key = f"{col} ({short_type})"
                     is_waived = rule_key in waived
                     if is_waived: waive_count += 1
                     else: fail_count_detail += 1
-                    status_icon = "⚠️" if is_waived else "❌"
-                    row_class = "row-waived" if is_waived else "row-fail"
-                    parts = []
-                    if is_waived: parts.append('<b><span style="color:#d35400">[WAIVED]</span></b>')
-                    el_count = result_data.get("element_count", "")
-                    unexp_count = result_data.get("unexpected_count", "")
-                    unexp_pct = result_data.get("unexpected_percent", "")
-                    if unexp_pct != "": parts.append(f'<b>{unexp_pct}% failed</b> ({unexp_count}/{el_count} rows)')
-                    observed = result_data.get("observed_value")
-                    if observed and isinstance(observed, list): parts.append(f'<b>Observed:</b> {", ".join(str(x) for x in observed[:10])}')
+                    row_info["status_text"] = '⚠️ Waived' if is_waived else '❌ Failed'
+                    row_info["row_class"] = 'row-waived' if is_waived else 'row-fail'
+                    row_info["is_waived"] = is_waived
+                    unexp_count = result_data.get("unexpected_count", 0)
+                    unexp_pct = result_data.get("unexpected_percent", 0)
+                    row_info["unexp_count"] = unexp_count
+                    row_info["pct_str"] = f"{unexp_pct:.1f}%" if isinstance(unexp_pct, (int, float)) else str(unexp_pct)
                     examples = result_data.get("partial_unexpected_list", [])
                     if examples:
-                        unique_ex = list(dict.fromkeys([str(x) for x in examples[:8]]))
-                        parts.append(f'<b>Unexpected:</b> <span class="unexpected-val">{", ".join(unique_ex)}</span>')
-                    if extra_info: parts.append(f'<b>Rule:</b> {extra_info}')
-                    detail_cell = "<br>".join(parts) if parts else "Failed"
-                    all_rows += f'<tr class="{row_class}"><td class="status-cell">{status_icon}</td><td class="col-cell">{col}</td><td class="exp-cell">{short_type}</td><td class="detail-cell">{detail_cell}</td></tr>'
+                        unique_ex = list(dict.fromkeys([str(x) for x in examples[:6]]))
+                        row_info["ex_str"] = ', '.join(unique_ex)
+                    else:
+                        row_info["ex_str"] = ""
+
+                if col not in col_groups:
+                    col_groups[col] = []
+                col_groups[col].append(row_info)
+
+            # Build merged-cell rows
+            all_rows = ""
+            for col, rows in col_groups.items():
+                has_fail = any(not r["is_success"] and not r.get("is_waived", False) for r in rows)
+                col_style = ' style="background:#fdf0f0;color:#c0392b;font-weight:bold;"' if has_fail else ''
+                rowspan = len(rows)
+                for i, r in enumerate(rows):
+                    all_rows += f'<tr class="{r["row_class"]}">'
+                    if i == 0:
+                        all_rows += f'<td class="col-cell" rowspan="{rowspan}"{col_style}>{col}</td>'
+                    all_rows += f'<td class="status-cell">{r["status_text"]}</td><td class="exp-cell">{r["short_type"]}</td><td class="expected-cell">{r["expected"]}</td><td class="num-cell">{r["unexp_count"]}</td><td class="num-cell">{r["pct_str"]}</td><td class="examples-cell">{r["ex_str"]}</td></tr>'
 
             total_exp = pass_count + fail_count_detail + waive_count
             status_label = "PASS ✅" if fail_count_detail == 0 else "FAILURE ❌"
@@ -511,7 +539,7 @@ def generate_batch_pdf(batch):
                 <p class="suite-ref">Suite: {suite_ref}</p>
                 <p class="summary-line">{summary_badges}</p>
                 <table class="detail-table"><thead><tr>
-                    <th style="width:24px">⬤</th><th style="width:100px">Column</th><th style="width:100px">Expectation</th><th>Detail</th>
+                    <th>Column</th><th>Status</th><th>Expectation</th><th>Expected</th><th>Errors</th><th>Error %</th><th>Examples</th>
                 </tr></thead><tbody>{all_rows}</tbody></table></div>"""
 
     # --- Failed Rules Summary (ranked by column errors) ---
@@ -570,7 +598,7 @@ def generate_batch_pdf(batch):
     # --- Assemble final HTML ---
     html = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     <style>
-    @page {{ size: A4; margin: 1.2cm; }}
+    @page {{ size: A4 portrait; margin: 1.2cm; }}
     body {{ font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 10px; color: #2c3e50; }}
     h1 {{ font-size: 18px; margin-bottom: 4px; }} h2 {{ font-size: 14px; margin-top: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }}
     .meta {{ color: #7f8c8d; font-size: 9px; margin-bottom: 12px; }}
@@ -591,12 +619,15 @@ def generate_batch_pdf(batch):
     .detail-table {{ border: 1px solid #e2e8f0; }}
     .detail-table th {{ background: #7f8c8d; font-size: 7px; padding: 3px 4px; }}
     .detail-table td {{ border: 1px solid #ecf0f1; padding: 3px 4px; font-size: 7px; vertical-align: top; word-break: break-word; }}
-    .status-cell {{ text-align: center; width: 24px; }}
-    .col-cell {{ font-weight: bold; color: #34495e; }}
-    .exp-cell {{ font-family: monospace; font-size: 7px; color: #7f8c8d; }}
-    .detail-cell {{ font-size: 7px; line-height: 1.3; }}
-    .pass-text {{ color: #27ae60; }} .extra-info {{ color: #95a5a6; }}
-    .unexpected-val {{ color: #c0392b; font-family: monospace; word-break: break-all; }}
+    .status-cell {{ width: 50px; font-size: 7px; }}
+    .col-cell {{ font-weight: bold; color: #34495e; vertical-align: middle; border-right: 2px solid #bdc3c7; border-bottom: 2px solid #bdc3c7; }}
+    .exp-cell {{ font-family: monospace; font-size: 6px; color: #7f8c8d; }}
+    .expected-cell {{ font-size: 6px; color: #7f8c8d; max-width: 100px; overflow: hidden; }}
+    .num-cell {{ text-align: center; }}
+    .examples-cell {{ font-family: monospace; font-size: 6px; color: #c0392b; max-width: 120px; word-break: break-all; }}
+    .row-pass {{ background: #f0faf0; }}
+    .row-fail {{ background: #fdf0f0; }}
+    .row-waived {{ background: #fdf6e8; }}
     .failed-summary-table {{ width: 100%; border-collapse: collapse; margin-bottom: 16px; }}
     .failed-summary-table th {{ background: #c0392b; color: white; padding: 5px 6px; text-align: left; font-size: 8px; }}
     .failed-summary-table td {{ border-bottom: 1px solid #ecf0f1; padding: 4px 6px; font-size: 8px; vertical-align: top; }}
@@ -785,9 +816,11 @@ def ai_worker(shared, full_df):
                 push_sse("progress", {"completed": shared["completed_count"]})
             time.sleep(0.1)
         elif shared["is_done"] and not shared["queue"]:
-            break
-        else:
-            time.sleep(0.5)
+            # Don't exit yet if GX workers are still active — they might retry items back
+            if shared["gx_active_count"] == 0 and not shared["ai_queue"]:
+                break
+            else:
+                time.sleep(0.5)
     shared["ai_is_done"] = True
 
 
@@ -835,6 +868,24 @@ def gx_worker(shared, val_params_tuple, sql_cfg, db_config):
                 safe_plc = plc_id.replace('/', '_')
                 log_fname = f"run_{shared.get('batch_id','x')}_{safe_ev}_{safe_plc}_{run_id[:8]}.json"
                 log_fpath = os.path.join(LOGS_DIR, log_fname)
+                # Enrich log with spec metadata
+                uploaded_fn = shared.get("uploaded_filename", "")
+                # Derive file path: "linepay_user_web_topup_insufficient - mini.csv" → "linepay_user/web/topup_insufficient"
+                spec_file_path = ""
+                if uploaded_fn:
+                    base = uploaded_fn.rsplit('.', 1)[0]  # remove .csv/.xlsx
+                    base = base.split(' - ')[0].strip()    # remove " - mini" etc
+                    parts = base.split('_')
+                    # Rebuild with / separators (first part is product, rest map to hierarchy)
+                    if len(parts) >= 3:
+                        spec_file_path = '/'.join(parts)
+                    else:
+                        spec_file_path = base
+                log_data["spec_file_path"] = spec_file_path
+                log_data["spec_str"] = spec_str
+                log_data["ev_type"] = ev_type
+                log_data["plc_id"] = plc_id
+                log_data["uploaded_filename"] = uploaded_fn
                 with open(log_fpath, 'w', encoding='utf-8') as f:
                     json.dump(log_data, f, indent=4)
                 run_data["log_filepath"] = log_fpath
@@ -987,6 +1038,7 @@ def start_pipeline():
         "gx_active_count": 0, "batch_id": batch_id,
         "retry_count": {}, "last_gx_error": {},
         "tracker": {},
+        "uploaded_filename": app_state.get("uploaded_filename", ""),
     }
     for spec in selected:
         ev, plc = spec.split(" | ")
@@ -1151,7 +1203,13 @@ def download_pdf(batch_id):
     if not os.path.exists(pdf_path):
         flash("PDF file not found on disk", "error")
         return redirect(url_for('results_page', batch_id=batch_id))
-    return send_file(pdf_path, as_attachment=True, download_name=os.path.basename(pdf_path))
+    filename = os.path.basename(pdf_path)
+    with open(pdf_path, 'rb') as f:
+        pdf_data = f.read()
+    response = Response(pdf_data, mimetype='application/pdf')
+    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+    response.headers['Content-Length'] = len(pdf_data)
+    return response
 
 
 # ─── Run ────────────────────────────────────────────────────

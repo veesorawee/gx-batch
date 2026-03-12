@@ -26,41 +26,63 @@
 </div>
 <div class="text-sm text-muted mb-3" id="progressText">0 / {{ total_specs }} completed</div>
 
-<!-- Live Tracker Table -->
-<div class="card">
-  <div class="card-header">
-    <h3>📋 Spec Progress</h3>
-    <span class="status status-running" id="liveIndicator">● LIVE</span>
+<!-- Two-column Layout -->
+<div class="pipeline-columns">
+  <!-- Left: Tracker Table -->
+  <div class="pipeline-col-main">
+    <div class="card">
+      <div class="card-header">
+        <h3>📋 Spec Progress</h3>
+        <span class="status status-running" id="liveIndicator">● LIVE</span>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="data-table" id="trackerTable">
+          <thead>
+            <tr>
+              <th>Event Type</th>
+              <th>Placement ID</th>
+              <th>Data Check</th>
+              <th>AI</th>
+              <th>Rules</th>
+              <th>GX</th>
+              <th>Pass/Fail</th>
+              <th>Result</th>
+            </tr>
+          </thead>
+          <tbody id="trackerBody">
+            {% for spec in specs %}
+            <tr id="row_{{ loop.index0 }}" data-spec="{{ spec }}">
+              <td>{{ spec.split(' | ')[0] }}</td>
+              <td class="text-mono">{{ spec.split(' | ')[1] }}</td>
+              <td class="col-data-check"><span class="status status-queued">⏳ Queued</span></td>
+              <td class="col-ai">-</td>
+              <td class="col-rules">-</td>
+              <td class="col-gx">-</td>
+              <td class="col-passfail">-</td>
+              <td class="col-result">-</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
-  <div style="overflow-x:auto;">
-    <table class="data-table" id="trackerTable">
-      <thead>
-        <tr>
-          <th>Event Type</th>
-          <th>Placement ID</th>
-          <th>Data Check</th>
-          <th>AI</th>
-          <th>Rules</th>
-          <th>GX</th>
-          <th>Pass/Fail</th>
-          <th>Result</th>
-        </tr>
-      </thead>
-      <tbody id="trackerBody">
-        {% for spec in specs %}
-        <tr id="row_{{ loop.index0 }}" data-spec="{{ spec }}">
-          <td>{{ spec.split(' | ')[0] }}</td>
-          <td class="text-mono">{{ spec.split(' | ')[1] }}</td>
-          <td class="col-data-check"><span class="status status-queued">⏳ Queued</span></td>
-          <td class="col-ai">-</td>
-          <td class="col-rules">-</td>
-          <td class="col-gx">-</td>
-          <td class="col-passfail">-</td>
-          <td class="col-result">-</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+
+  <!-- Right: Activity Log -->
+  <div class="pipeline-col-log">
+    <div class="activity-log-panel">
+      <div class="activity-log-header">
+        <span class="activity-log-icon">⚡</span>
+        <span>Activity Log</span>
+        <span class="activity-log-dot" id="logDot"></span>
+      </div>
+      <div class="activity-log-body" id="activityLog">
+        <div class="log-entry log-info">
+          <span class="log-time" data-ts="now">now</span>
+          <span class="log-msg">Pipeline started. Connecting...</span>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -76,6 +98,38 @@
 <script>
 const totalSpecs = {{ total_specs }};
 let completedCount = 0;
+const startTime = Date.now();
+
+function elapsed() {
+  const s = Math.floor((Date.now() - startTime) / 1000);
+  if (s < 60) return s + 's';
+  return Math.floor(s/60) + 'm ' + (s%60) + 's';
+}
+
+function addLog(msg, type) {
+  const log = document.getElementById('activityLog');
+  const entry = document.createElement('div');
+  entry.className = 'log-entry log-' + (type || 'info') + ' log-new';
+  entry.innerHTML = '<span class="log-time">' + elapsed() + '</span><span class="log-msg">' + msg + '</span>';
+  log.appendChild(entry);
+  // Remove animation class after it plays
+  setTimeout(() => entry.classList.remove('log-new'), 400);
+  // Keep only latest 10 entries visible, fade out old ones
+  const maxVisible = 10;
+  const entries = log.querySelectorAll('.log-entry');
+  if (entries.length > maxVisible) {
+    const toRemove = entries.length - maxVisible;
+    for (let i = 0; i < toRemove; i++) {
+      entries[i].style.opacity = '0';
+      entries[i].style.height = '0';
+      entries[i].style.padding = '0';
+      entries[i].style.margin = '0';
+      entries[i].style.overflow = 'hidden';
+      entries[i].style.transition = 'all 0.3s ease';
+      setTimeout(() => entries[i].remove(), 350);
+    }
+  }
+}
 
 function updateCell(specStr, field, content) {
   const rows = document.querySelectorAll('#trackerBody tr');
@@ -113,7 +167,7 @@ evtSource.addEventListener('tracker_update', function(e) {
   let html = value;
   // Convert status text to badges
   if (value.includes('Queued')) html = statusBadge(value, 'queued');
-  else if (value.includes('🔄') || value.includes('Running') || value.includes('กำลัง')) html = statusBadge(value, 'running');
+  else if (value.includes('🔄') || value.includes('Running') || value.includes('Generating')) html = statusBadge(value, 'running');
   else if (value.includes('✅')) html = statusBadge(value, 'pass');
   else if (value.includes('❌') || value.includes('Mismatch')) html = statusBadge(value, 'fail');
   else if (value.includes('🚨') || value.includes('Error')) html = statusBadge(value, 'error');
@@ -128,11 +182,35 @@ evtSource.addEventListener('tracker_update', function(e) {
     'Result': 'result'
   };
   updateCell(spec, fieldMap[field] || field, html);
+
+  // Add meaningful events to activity log
+  const shortSpec = spec.split(' | ').map(s => s.split('/').pop()).join(' · ');
+  if (field === 'Data Check') {
+    if (value.includes('Found')) addLog('✅ <b>' + shortSpec + '</b> — data found', 'success');
+    else if (value.includes('No Data')) addLog('⏭️ <b>' + shortSpec + '</b> — no data, skipped', 'skip');
+    else if (value.includes('Checking')) addLog('🔍 Checking data for <b>' + shortSpec + '</b>...', 'info');
+    else if (value.includes('Error')) addLog('🚨 <b>' + shortSpec + '</b> — query error', 'error');
+  } else if (field === 'AI') {
+    if (value.includes('Generating')) addLog('🧠 AI generating rules for <b>' + shortSpec + '</b>...', 'info');
+    else if (value.includes('Done')) addLog('✅ AI rules ready for <b>' + shortSpec + '</b>', 'success');
+    else if (value.includes('Rate limited')) addLog('⏳ Rate limited, waiting... <b>' + shortSpec + '</b>', 'warning');
+    else if (value.includes('🚨')) addLog('🚨 AI error for <b>' + shortSpec + '</b>: ' + value, 'error');
+  } else if (field === 'GX') {
+    if (value.includes('Running')) addLog('🔄 Running GX validation for <b>' + shortSpec + '</b>...', 'info');
+    else if (value.includes('Done')) addLog('✅ GX complete for <b>' + shortSpec + '</b>', 'success');
+    else if (value.includes('Retrying')) addLog('🔁 Retrying AI for <b>' + shortSpec + '</b>...', 'warning');
+    else if (value.includes('Error')) addLog('🚨 GX error for <b>' + shortSpec + '</b>', 'error');
+  } else if (field === 'Result') {
+    if (value.includes('Passed')) addLog('🎉 <b>' + shortSpec + '</b> — <span style="color:var(--green)">PASSED</span>', 'success');
+    else if (value.includes('Mismatch')) addLog('❌ <b>' + shortSpec + '</b> — <span style="color:var(--red)">FAILED</span>', 'error');
+    else if (value.includes('Error')) addLog('🚨 <b>' + shortSpec + '</b> — error', 'error');
+  }
 });
 
 evtSource.addEventListener('status', function(e) {
   const data = JSON.parse(e.data);
   document.getElementById('statusText').textContent = data.text;
+  addLog(data.text, 'status');
 });
 
 evtSource.addEventListener('progress', function(e) {
@@ -156,6 +234,9 @@ evtSource.addEventListener('done', function(e) {
   document.getElementById('progressBar').style.width = '100%';
   document.getElementById('progressText').textContent = totalSpecs + ' / ' + totalSpecs + ' completed (100%)';
 
+  document.getElementById('logDot').classList.add('done');
+  addLog('🏁 <b>Pipeline complete!</b> All ' + totalSpecs + ' specs processed in <b>' + elapsed() + '</b>', 'done');
+
   const doneDiv = document.getElementById('doneActions');
   doneDiv.classList.remove('hidden');
   document.getElementById('viewResultsBtn').href = '/results/' + data.batch_id;
@@ -164,6 +245,7 @@ evtSource.addEventListener('done', function(e) {
 evtSource.onerror = function() {
   document.getElementById('statusText').textContent = '⚠️ Connection lost. Refresh to reconnect.';
   document.getElementById('statusDot').style.background = 'var(--orange)';
+  addLog('⚠️ SSE connection lost', 'error');
 };
 </script>
 {% endblock %}
