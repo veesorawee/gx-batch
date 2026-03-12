@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>{% block title %}Tracking Validation{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar -->
+    <nav class="sidebar">
+      <div class="sidebar-brand">
+        <div class="logo">⚡</div>
+        <div>
+          <h1>Tracking QA</h1>
+          <small>Data Validation Pipeline</small>
+        </div>
+      </div>
+
+      <div class="sidebar-nav">
+        <a href="{{ url_for('upload_page') }}" class="{% if active_page == 'upload' %}active{% endif %}">
+          <span class="icon">📁</span> Upload Spec
+        </a>
+        {% if session.get('configured') %}
+        <a href="{{ url_for('configure_page') }}" class="{% if active_page == 'configure' %}active{% endif %}">
+          <span class="icon">⚙️</span> Configure
+        </a>
+        {% endif %}
+        {% if session.get('pipeline_started') %}
+        <a href="{{ url_for('pipeline_page') }}" class="{% if active_page == 'pipeline' %}active{% endif %}">
+          <span class="icon">🚀</span> Pipeline
+        </a>
+        {% endif %}
+      </div>
+
+      <div class="sidebar-history">
+        <h3>📜 Batch History</h3>
+        {% if batch_history %}
+          {% for batch in batch_history %}
+          <a href="{{ url_for('results_page', batch_id=batch.id) }}"
+             class="{% if active_page == 'results' and active_batch_id == batch.id %}active{% endif %}"
+             style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:6px;text-decoration:none;color:var(--text-secondary);font-size:13px;margin-bottom:2px;transition:all 0.15s;">
+            {% if batch.all_pass %}✅{% elif batch.has_pass %}⚠️{% else %}❌{% endif %}
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ batch.spec_file }}</span>
+            <span style="font-size:11px;color:var(--text-muted);">{{ batch.date_queried }}</span>
+          </a>
+          {% endfor %}
+        {% else %}
+          <p class="text-muted text-sm" style="padding:8px 12px;">No history yet</p>
+        {% endif %}
+      </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category }} fade-in">{{ message }}</div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <script>
+    // Toggle accordion
+    document.addEventListener('click', function(e) {
+      const header = e.target.closest('.accordion-header');
+      if (header) {
+        header.closest('.accordion').classList.toggle('open');
+      }
+    });
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% block title %}Results — Tracking Validation{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="breadcrumb">
+    <a href="{{ url_for('upload_page') }}">Upload</a>
+    <span class="sep">›</span>
+    <span>Results</span>
+  </div>
+  <h2>📊 Validation Results</h2>
+  <p>
+    Spec: <strong>{{ batch.spec_file }}</strong> |
+    Date: <strong>{{ batch.date_queried }}</strong> |
+    Batch: <code>{{ batch.id[:8] }}</code>
+  </p>
+</div>
+
+<!-- Metrics -->
+<div class="metrics-row">
+  <div class="metric-card pass slide-up">
+    <div class="num">{{ metrics.passed }}</div>
+    <div class="label">Passed</div>
+  </div>
+  <div class="metric-card fail slide-up">
+    <div class="num">{{ metrics.failed }}</div>
+    <div class="label">Failed</div>
+  </div>
+  <div class="metric-card error slide-up">
+    <div class="num">{{ metrics.error }}</div>
+    <div class="label">Error</div>
+  </div>
+  <div class="metric-card total slide-up">
+    <div class="num">{{ metrics.total }}</div>
+    <div class="label">Total</div>
+  </div>
+</div>
+
+<!-- Tracker Summary Table -->
+<div class="card mb-3">
+  <div class="card-header">
+    <h3>📋 Validation Summary</h3>
+    {% if batch.pdf_path %}
+    <a href="{{ url_for('download_pdf', batch_id=batch.id) }}" class="btn btn-primary">
+      📥 Download PDF Report
+    </a>
+    {% endif %}
+  </div>
+  <div style="overflow-x:auto;">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Event Type</th>
+          <th>Placement ID</th>
+          <th>Data Check</th>
+          <th>AI</th>
+          <th>Rules</th>
+          <th>GX</th>
+          <th>Pass/Fail</th>
+          <th>Result</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in tracker_rows %}
+        <tr class="{{ row._status_class }}">
+          <td>{{ row['Event Type'] }}</td>
+          <td class="text-mono">{{ row['Placement ID'] }}</td>
+          <td>{{ row['Data Check'] }}</td>
+          <td>{{ row['AI'] }}</td>
+          <td>{{ row['Rules'] }}</td>
+          <td>{{ row['GX'] }}</td>
+          <td>{{ row['Pass/Fail'] }}</td>
+          <td>
+            {% if '✅' in row['Result'] %}<span class="status status-pass">{{ row['Result'] }}</span>
+            {% elif '❌' in row['Result'] %}<span class="status status-fail">{{ row['Result'] }}</span>
+            {% elif '🚨' in row['Result'] %}<span class="status status-error">{{ row['Result'] }}</span>
+            {% else %}<span class="status status-skip">{{ row['Result'] }}</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Waive Rules Section -->
+{% if failed_items %}
+<div class="card mb-3">
+  <div class="card-header">
+    <h3>🚨 Failed Rules Summary & Waive</h3>
+  </div>
+  <form method="POST" action="{{ url_for('waive_rules_action', batch_id=batch.id) }}" id="waiveForm">
+    <div style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th style="width:60px">Waive</th>
+            <th>Column</th>
+            <th>Rule</th>
+            <th>Details</th>
+            <th>Errors</th>
+            <th>Impacted</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in failed_items %}
+          <tr class="{% if item.rule_key in waived_rules %}row-waived{% else %}row-fail{% endif %}">
+            <td class="text-center">
+              <input type="checkbox" name="waive_rules" value="{{ item.rule_key }}"
+                     class="waive-checkbox"
+                     {% if item.rule_key in waived_rules %}checked{% endif %}>
+            </td>
+            <td><strong>{{ item.col }}</strong></td>
+            <td class="text-mono text-sm">{{ item.exp_type }}</td>
+            <td class="text-sm">{{ item.detail }}</td>
+            <td class="text-center"><strong style="color:var(--red)">{{ item.count }}</strong></td>
+            <td class="text-center">{{ item.placements }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="mt-2" style="display:flex;gap:12px;">
+      <button type="submit" class="btn btn-primary">
+        ✅ Confirm Waived Rules & Regenerate Report
+      </button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+<!-- Per-Spec Detail Cards -->
+<h3 class="mb-2" style="font-size:18px; font-weight:600;">📋 Spec Details</h3>
+
+{% for run in results %}
+<div class="accordion {% if run.status != 'SUCCESS' %}open{% endif %} slide-up">
+  <button class="accordion-header" type="button">
+    {% if run.eff_status == 'SUCCESS' %}✅
+    {% elif run.eff_status == 'ERROR' %}🚨
+    {% else %}❌{% endif %}
+    <strong>{{ run.name }}</strong>
+    <span class="text-muted text-sm">— {{ run.eff_status }}</span>
+    <span class="arrow">▶</span>
+  </button>
+  <div class="accordion-body">
+    {% if run.status == 'ERROR' %}
+      <div class="alert alert-error">{{ run.error }}</div>
+      {% if run.traceback %}
+      <div class="code-block">{{ run.traceback }}</div>
+      {% endif %}
+    {% else %}
+      <div class="text-sm text-muted mb-2">
+        🕐 {{ run.timestamp }} | 📊 Run: {{ run.run_name or '-' }}
+      </div>
+
+      <!-- Validation Error Table -->
+      {% if run.failed_expectations %}
+      <table class="data-table mb-2">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Column</th>
+            <th>Expectation</th>
+            <th>Expected</th>
+            <th>Errors</th>
+            <th>Error %</th>
+            <th>Examples</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for exp in run.failed_expectations %}
+          <tr class="{% if exp.is_waived %}row-waived{% else %}row-fail{% endif %}">
+            <td>{{ '⚠️ Waived' if exp.is_waived else '❌ Failed' }}</td>
+            <td><strong>{{ exp.column }}</strong></td>
+            <td class="text-mono text-sm">{{ exp.exp_type }}</td>
+            <td class="text-sm">{{ exp.expected }}</td>
+            <td class="text-center">{{ exp.error_count }}</td>
+            <td class="text-center">{{ "%.1f"|format(exp.error_pct) }}%</td>
+            <td class="text-mono text-xs">{{ exp.examples|join(', ') }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+
+      <!-- AI Prompt (collapsed) -->
+      {% if run.ai_prompt %}
+      <div class="accordion">
+        <button class="accordion-header" type="button">
+          🧠 AI Prompt <span class="arrow">▶</span>
+        </button>
+        <div class="accordion-body">
+          <div class="code-block">{{ run.ai_prompt }}</div>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if run.ai_response %}
+      <div class="accordion">
+        <button class="accordion-header" type="button">
+          🤖 AI Response <span class="arrow">▶</span>
+        </button>
+        <div class="accordion-body">
+          <div class="code-block">{{ run.ai_response }}</div>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if run.process_log %}
+      <div class="accordion">
+        <button class="accordion-header" type="button">
+          📝 Process Log <span class="arrow">▶</span>
+        </button>
+        <div class="accordion-body">
+          {% for entry in run.process_log %}
+            <div class="text-sm" style="margin-bottom:4px;">{{ entry|safe }}</div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+
+<!-- Actions -->
+<div class="mt-3" style="display:flex;gap:12px;">
+  <a href="{{ url_for('upload_page') }}" class="btn btn-secondary btn-lg" style="flex:1;">
+    🔄 New Validation Run
+  </a>
+  {% if batch.pdf_path %}
+  <a href="{{ url_for('download_pdf', batch_id=batch.id) }}" class="btn btn-primary btn-lg" style="flex:1;">
+    📥 Download PDF
+  </a>
+  {% endif %}
+</div>
+{% endblock %}

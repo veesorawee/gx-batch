@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Configure — Tracking Validation{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="breadcrumb">
+    <a href="{{ url_for('upload_page') }}">Upload</a>
+    <span class="sep">›</span>
+    <span>Configure</span>
+  </div>
+  <h2>⚙️ Configure Validation</h2>
+  <p>File: <strong>{{ filename }}</strong> — {{ specs|length }} event/placement pairs found</p>
+</div>
+
+<form method="POST" action="{{ url_for('start_pipeline') }}" id="configForm">
+
+  <!-- Settings -->
+  <div class="card mb-3 slide-up">
+    <div class="card-header">
+      <h3>📅 Settings</h3>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="queryDate">Query Date (YYYYMMDD)</label>
+        <input type="text" class="form-control" id="queryDate" name="query_date"
+               value="{{ default_date }}" placeholder="20260311">
+      </div>
+      <div class="form-group">
+        <label for="segmentBy">Segment By (comma-separated)</label>
+        <input type="text" class="form-control" id="segmentBy" name="segment_by"
+               placeholder="e.g. platform, os_name" value="">
+      </div>
+    </div>
+  </div>
+
+  <!-- SQL Source -->
+  <div class="card mb-3 slide-up">
+    <div class="card-header">
+      <h3>🗄️ SQL Source</h3>
+    </div>
+    <div class="form-group">
+      <div style="display:flex;gap:12px;margin-bottom:12px;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="radio" name="sql_source" value="custom" checked onchange="toggleSqlSource()"> Custom SQL
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="radio" name="sql_source" value="file" onchange="toggleSqlSource()"> SQL File
+        </label>
+      </div>
+    </div>
+    <div id="sqlCustom">
+      <div class="form-group">
+        <label for="customSql">SQL Query</label>
+        <textarea class="form-control" id="customSql" name="custom_sql" rows="5"
+                  placeholder="SELECT * FROM my_database.raw_events WHERE dt = '{dt}'">SELECT * FROM my_database.raw_events WHERE dt = '{dt}'</textarea>
+      </div>
+    </div>
+    <div id="sqlFile" class="hidden">
+      <div class="form-group">
+        <label for="sqlFileSelect">Select SQL File</label>
+        <select class="form-control" id="sqlFileSelect" name="sql_file">
+          <option value="">-- Select --</option>
+          {% for f in sql_files %}
+          <option value="{{ f }}">{{ f }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Spec Selection -->
+  <div class="card mb-3 slide-up">
+    <div class="card-header">
+      <h3>📌 Select Specs to Validate</h3>
+      <div>
+        <button type="button" class="btn btn-ghost" onclick="toggleAll(true)">Select All</button>
+        <button type="button" class="btn btn-ghost" onclick="toggleAll(false)">Deselect All</button>
+      </div>
+    </div>
+    <div class="spec-list">
+      {% for spec in specs %}
+      <div class="spec-item">
+        <input type="checkbox" name="selected_specs" value="{{ spec }}" id="spec_{{ loop.index }}" checked>
+        <label for="spec_{{ loop.index }}">
+          <span class="status status-queued" style="margin-right:4px;">{{ spec.split(' | ')[0] }}</span>
+          {{ spec.split(' | ')[1] }}
+        </label>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="mt-1 text-muted text-sm" id="selectedCount">{{ specs|length }} of {{ specs|length }} selected</div>
+  </div>
+
+  <!-- Submit -->
+  <button type="submit" class="btn btn-primary btn-lg btn-block" id="startBtn">
+    🚀 Start Validation
+  </button>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function toggleSqlSource() {
+    const isCustom = document.querySelector('input[name="sql_source"][value="custom"]').checked;
+    document.getElementById('sqlCustom').classList.toggle('hidden', !isCustom);
+    document.getElementById('sqlFile').classList.toggle('hidden', isCustom);
+  }
+
+  function toggleAll(checked) {
+    document.querySelectorAll('input[name="selected_specs"]').forEach(cb => cb.checked = checked);
+    updateCount();
+  }
+
+  function updateCount() {
+    const total = document.querySelectorAll('input[name="selected_specs"]').length;
+    const selected = document.querySelectorAll('input[name="selected_specs"]:checked').length;
+    document.getElementById('selectedCount').textContent = selected + ' of ' + total + ' selected';
+  }
+
+  document.querySelectorAll('input[name="selected_specs"]').forEach(cb => {
+    cb.addEventListener('change', updateCount);
+  });
+
+  document.getElementById('configForm').addEventListener('submit', function() {
+    const btn = document.getElementById('startBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Starting pipeline...';
+  });
+</script>
+{% endblock %}
