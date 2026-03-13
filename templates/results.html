@@ -42,8 +42,9 @@
 <div class="card mb-3">
   <div class="card-header">
     <h3>Validation Summary</h3>
-    {% if batch.pdf_path %}
-    <a href="{{ url_for('download_pdf', batch_id=batch.id) }}" class="btn btn-outline btn-sm">
+    <a href="{{ url_for('download_pdf', batch_id=batch.id) if batch.pdf_path else '#' }}" 
+       class="btn btn-outline btn-sm {% if not batch.pdf_path %}disabled{% endif %}" 
+       {% if batch.pdf_path %}download{% else %}disabled onclick="return false;"{% endif %}>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
         <polyline points="7 10 12 15 17 10" />
@@ -51,7 +52,6 @@
       </svg>
       Download PDF
     </a>
-    {% endif %}
   </div>
   <div style="overflow-x:auto;">
     <table class="data-table">
@@ -199,7 +199,19 @@
       <span class="sticky-footer-text">
         {{ waived_rules|length }} waived · {{ failed_items|length }} rule{{ 's' if failed_items|length > 1 else '' }} failed
       </span>
-      <button type="submit" class="btn btn-primary">Apply & Regenerate</button>
+      <div class="sticky-footer-actions">
+        <button type="submit" class="btn btn-primary">Apply & Regenerate</button>
+        <a href="{{ url_for('download_pdf', batch_id=batch.id) if batch.pdf_path else '#' }}" 
+           class="btn btn-outline {% if not batch.pdf_path %}disabled{% endif %}" 
+           {% if batch.pdf_path %}download{% else %}disabled onclick="return false;"{% endif %}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          Download PDF
+        </a>
+      </div>
     </div>
   </form>
 </div>
@@ -309,10 +321,11 @@
   <a href="{{ url_for('upload_page') }}" class="btn btn-secondary" style="flex:1;">
     New Validation
   </a>
-  {% if batch.pdf_path %}
-  <a href="{{ url_for('download_pdf', batch_id=batch.id) }}" class="btn btn-primary" style="flex:1;">
+  <a href="{{ url_for('download_pdf', batch_id=batch.id) if batch.pdf_path else '#' }}" 
+     class="btn btn-primary {% if not batch.pdf_path %}disabled{% endif %}" 
+     style="flex:1;" 
+     {% if batch.pdf_path %}download{% else %}disabled onclick="return false;"{% endif %}>
     Download PDF
   </a>
-  {% endif %}
 </div>
 {% endblock %}

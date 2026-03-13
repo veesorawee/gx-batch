@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from sqlalchemy.engine import create_engine
 from sqlalchemy import text
 from flask import (Flask, render_template, request, redirect, url_for,
-                   session, flash, send_file, Response, jsonify)
+                   session, flash, send_file, Response, jsonify, make_response)
 import google.generativeai as genai
 import io
 
@@ -199,7 +199,7 @@ def run_validation_process(sql_input, expectations_input, suite_name, db_config,
     for i, segment_filters in enumerate(segments_to_run):
         seg_name = "-".join(str(v) for v in segment_filters.values()).replace(".", "_") if segment_filters else "full_dataset"
         extra_where = " ".join([f"AND {c} = '{v}'" for c, v in segment_filters.items()])
-        final_query = sql_input.format(dt=db_query_date, extra_where_conditions=extra_where) + " LIMIT 500"
+        final_query = sql_input.format(dt=db_query_date, extra_where_conditions=extra_where) + " LIMIT 1000"
         try:
             df = pd.read_sql(text(final_query), engine)
             if df.empty:
@@ -666,7 +666,10 @@ def generate_batch_pdf(batch):
 
     pdf_bytes = weasyprint.HTML(string=html).write_pdf()
     bid = batch.get("id", "unknown")[:8]
-    fname = f"report_{batch.get('spec_file','batch').replace(' ','_')}_{batch.get('date_queried','')}_{bid}.pdf"
+    raw_spec = batch.get('spec_file', 'batch')
+    spec_base = raw_spec.rsplit('.', 1)[0] # เอาเฉพาะส่วนชื่อ ไม่เอานามสกุล
+    safe_spec = re.sub(r'[^a-zA-Z0-9]', '_', spec_base)
+    fname = f"report_{safe_spec}_{batch.get('date_queried', '')}_{bid}.pdf"
     fpath = os.path.join(REPORTS_DIR, fname)
     with open(fpath, "wb") as f:
         f.write(pdf_bytes)
@@ -806,6 +809,10 @@ def ai_worker(shared, full_df):
                     with open(exp_path, 'w', encoding='utf-8') as ef:
                         json.dump(parsed, ef, indent=4, ensure_ascii=False)
 
+                    spec_file_path = ""
+                    if 'file_name' in df_filtered.columns and not df_filtered['file_name'].empty:
+                        spec_file_path = str(df_filtered['file_name'].iloc[0])
+
                     push_sse("tracker_update", {"spec": spec_str, "field": "AI", "value": "Done"})
                     push_sse("tracker_update", {"spec": spec_str, "field": "Rules", "value": str(len(parsed))})
                     push_sse("tracker_update", {"spec": spec_str, "field": "GX", "value": "Queued"})
@@ -814,6 +821,7 @@ def ai_worker(shared, full_df):
                         "suite_name": suite_name, "expectations": final_expectations,
                         "flatten_map": flatten_map, "prompt": prompt,
                         "ai_response": response.text if response else "", "rule_count": len(parsed),
+                        "spec_file_path": spec_file_path
                     })
                 else:
                     push_sse("tracker_update", {"spec": spec_str, "field": "AI", "value": "No JSON"})
@@ -880,24 +888,11 @@ def gx_worker(shared, val_params_tuple, sql_cfg, db_config):
                 safe_plc = plc_id.replace('/', '_')
                 log_fname = f"run_{shared.get('batch_id','x')}_{safe_ev}_{safe_plc}_{run_id[:8]}.json"
                 log_fpath = os.path.join(LOGS_DIR, log_fname)
-                # Enrich log with spec metadata
-                uploaded_fn = shared.get("uploaded_filename", "")
-                # Derive file path: "linepay_user_web_topup_insufficient - mini.csv" → "linepay_user/web/topup_insufficient"
-                spec_file_path = ""
-                if uploaded_fn:
-                    base = uploaded_fn.rsplit('.', 1)[0]  # remove .csv/.xlsx
-                    base = base.split(' - ')[0].strip()    # remove " - mini" etc
-                    parts = base.split('_')
-                    # Rebuild with / separators (first part is product, rest map to hierarchy)
-                    if len(parts) >= 3:
-                        spec_file_path = '/'.join(parts)
-                    else:
-                        spec_file_path = base
-                log_data["spec_file_path"] = spec_file_path
+                log_data["spec_file_path"] = item.get("spec_file_path", "")
                 log_data["spec_str"] = spec_str
                 log_data["ev_type"] = ev_type
                 log_data["plc_id"] = plc_id
-                log_data["uploaded_filename"] = uploaded_fn
+                log_data["uploaded_filename"] = shared.get("uploaded_filename", "")
                 with open(log_fpath, 'w', encoding='utf-8') as f:
                     json.dump(log_data, f, indent=4)
                 run_data["log_filepath"] = log_fpath
@@ -1267,11 +1262,21 @@ def download_pdf(batch_id):
         flash("PDF file not found on disk", "error")
         return redirect(url_for('results_page', batch_id=batch_id))
     filename = os.path.basename(pdf_path)
-    with open(pdf_path, 'rb') as f:
-        pdf_data = f.read()
-    response = Response(pdf_data, mimetype='application/pdf')
-    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
-    response.headers['Content-Length'] = len(pdf_data)
+    print(f"📥 Requesting PDF download for batch: {batch_id}")
+    print(f"📥 File path: {pdf_path}")
+    print(f"📥 Suggested filename: {filename}")
+    
+    # Use make_response to set custom headers manually
+    response = make_response(send_file(pdf_path, mimetype='application/pdf'))
+    
+    # RFC 6266: Use filename* for UTF-8 support and filename as fallback
+    import urllib.parse
+    quoted_filename = urllib.parse.quote(filename)
+    response.headers['Content-Disposition'] = f"attachment; filename=\"{filename}\"; filename*=UTF-8''{quoted_filename}"
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    
     return response
 
 
