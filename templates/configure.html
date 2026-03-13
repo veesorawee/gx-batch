@@ -36,15 +36,15 @@
   <!-- SQL Source -->
   <div class="card mb-3 slide-up">
     <div class="card-header">
-      <h3>SQL Source</h3>
+      <h3>SQL source</h3>
     </div>
     <div class="form-group">
       <div style="display:flex;gap:16px;margin-bottom:12px;">
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13.5px;">
-          <input type="radio" name="sql_source" value="custom" checked onchange="toggleSqlSource()"> Custom SQL
+          <input type="radio" name="sql_source" value="custom" checked onchange="toggleSqlSource()" style="accent-color: var(--brand);"> Custom SQL
         </label>
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13.5px;">
-          <input type="radio" name="sql_source" value="file" onchange="toggleSqlSource()"> SQL File
+          <input type="radio" name="sql_source" value="file" onchange="toggleSqlSource()" style="accent-color: var(--brand);"> SQL File
         </label>
       </div>
     </div>
@@ -71,7 +71,7 @@
   <!-- Spec Selection -->
   <div class="card mb-3 slide-up">
     <div class="card-header">
-      <h3>Select Specs to Validate</h3>
+      <h3>Select specs to validate</h3>
       <div>
         <button type="button" class="btn btn-ghost btn-sm" onclick="toggleAll(true)">Select All</button>
         <button type="button" class="btn btn-ghost btn-sm" onclick="toggleAll(false)">Deselect All</button>
@@ -92,7 +92,7 @@
   </div>
 
   <!-- Submit -->
-  <button type="submit" class="btn btn-primary btn-lg btn-block" id="startBtn">
+  <button type="submit" class="btn btn-primary" id="startBtn">
     Start Validation
   </button>
 </form>

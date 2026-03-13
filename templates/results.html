@@ -12,27 +12,29 @@
   <p>
     Spec: <strong>{{ batch.spec_file }}</strong> ·
     Date: <strong>{{ batch.date_queried }}</strong> ·
-    Batch: <code style="font-size:12px;background:var(--bg-page);padding:2px 6px;border-radius:4px;">{{ batch.id[:8] }}</code>
+    Batch: <code
+      style="font-size:12px;background:var(--bg-page);padding:2px 6px;border-radius:4px;">{{ batch.id[:8] }}</code>
   </p>
+  <div class="accent-bar {% if metrics.failed > 0 %}state-fail{% elif metrics.passed == metrics.total %}state-pass{% else %}state-error{% endif %}"></div>
 </div>
 
 <!-- Metrics -->
 <div class="metrics-row">
-  <div class="metric-card pass slide-up">
-    <div class="num">{{ metrics.passed }}</div>
-    <div class="label">Passed</div>
+  <div class="metric-card slide-up">
+    <h3>Passed</h3>
+    <div class="value {% if metrics.passed > 0 %}metric-pass{% else %}metric-zero{% endif %}">{{ metrics.passed }}</div>
   </div>
-  <div class="metric-card fail slide-up">
-    <div class="num">{{ metrics.failed }}</div>
-    <div class="label">Failed</div>
+  <div class="metric-card slide-up">
+    <h3>Failed</h3>
+    <div class="value {% if metrics.failed > 0 %}metric-fail{% else %}metric-zero{% endif %}">{{ metrics.failed }}</div>
   </div>
-  <div class="metric-card error slide-up">
-    <div class="num">{{ metrics.error }}</div>
-    <div class="label">Error</div>
+  <div class="metric-card slide-up">
+    <h3>Error</h3>
+    <div class="value {% if metrics.error > 0 %}metric-error{% else %}metric-zero{% endif %}">{{ metrics.error }}</div>
   </div>
-  <div class="metric-card total slide-up">
-    <div class="num">{{ metrics.total }}</div>
-    <div class="label">Total</div>
+  <div class="metric-card slide-up">
+    <h3>Total</h3>
+    <div class="value metric-total">{{ metrics.total }}</div>
   </div>
 </div>
 
@@ -42,7 +44,11 @@
     <h3>Validation Summary</h3>
     {% if batch.pdf_path %}
     <a href="{{ url_for('download_pdf', batch_id=batch.id) }}" class="btn btn-outline btn-sm">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+        <polyline points="7 10 12 15 17 10" />
+        <line x1="12" y1="15" x2="12" y2="3" />
+      </svg>
       Download PDF
     </a>
     {% endif %}
@@ -51,9 +57,9 @@
     <table class="data-table">
       <thead>
         <tr>
-          <th>Event Type</th>
+          <th>Event type</th>
           <th>Placement ID</th>
-          <th>Data Check</th>
+          <th>Data check</th>
           <th>AI</th>
           <th>Rules</th>
           <th>GX</th>
@@ -62,21 +68,85 @@
         </tr>
       </thead>
       <tbody>
+        {% macro render_status(v) %}
+        {% if 'Queued' in v %}<span class="status status-queued"><svg width="12" height="12" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
+            style="margin-right:2px">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>{{ v }}</span>
+        {% elif 'Running' in v or 'Generating' in v or 'Retrying' in v or 'Checking' in v %}<span
+          class="status status-running"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" class="spin-icon"
+            stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
+            style="margin-right:2px">
+            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3" />
+          </svg>{{ v }}</span>
+        {% elif 'Found' in v %}<span class="status status-found"><svg width="12" height="12" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
+            style="margin-right:2px">
+            <circle cx="12" cy="12" r="5" fill="currentColor"></circle>
+          </svg>{{ v }}</span>
+        {% elif 'Done' in v or 'Passed' in v %}<span class="status status-pass"><svg width="12" height="12"
+            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"
+            stroke-linejoin="round" style="margin-right:2px">
+            <circle cx="12" cy="12" r="5" fill="currentColor"></circle>
+          </svg>{{ v }}</span>
+        {% elif 'Mismatch' in v %}<span class="status status-fail"><svg width="12" height="12" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
+            style="margin-right:2px">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>{{ v }}</span>
+        {% elif 'Error' in v or 'No DB' in v or 'No JSON' in v %}<span class="status status-error"><svg width="12"
+            height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"
+            stroke-linejoin="round" style="margin-right:2px">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>{{ v }}</span>
+        {% elif 'Skipped' in v %}<span class="status status-skip"><svg width="12" height="12" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
+            style="margin-right:2px">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>{{ v }}</span>
+        {% elif 'No Data' in v %}<span class="status status-nodata"><svg width="12" height="12" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
+            style="margin-right:2px">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>{{ v }}</span>
+        {% else %}{{ v }}{% endif %}
+        {% endmacro %}
         {% for row in tracker_rows %}
-        <tr class="{{ row._status_class }}">
+        <tr class="{{ row._status_class }}"
+            {% if 'Skipped' in row['Result']|string %}style="opacity:0.55"{% endif %}>
           <td>{{ row['Event Type'] }}</td>
           <td class="text-mono">{{ row['Placement ID'] }}</td>
-          <td>{{ row['Data Check'] }}</td>
-          <td>{{ row['AI'] }}</td>
-          <td>{{ row['Rules'] }}</td>
-          <td>{{ row['GX'] }}</td>
-          <td>{{ row['Pass/Fail'] }}</td>
+          <td>{{ render_status(row['Data Check']) }}</td>
+          <td>{{ render_status(row['AI']) }}</td>
           <td>
-            {% if '✅' in row['Result'] %}<span class="status status-pass">Passed</span>
-            {% elif '❌' in row['Result'] %}<span class="status status-fail">Failed</span>
-            {% elif '🚨' in row['Result'] %}<span class="status status-error">Error</span>
-            {% else %}<span class="status status-skip">{{ row['Result'] }}</span>{% endif %}
+            {% set passfail_val = row['Pass/Fail']|string %}
+            {% if '/' in passfail_val %}
+              {% set parts = passfail_val.split('/') %}
+              {% set pass_n = parts[0]|trim|int %}
+              {% set total_n = parts[1].split(' ')[0]|trim|int %}
+              {% set pct = ((pass_n / total_n) * 100)|int if total_n > 0 else 0 %}
+              <div class="rule-progress-wrapper">
+                <div class="progress-bar-container">
+                  <div class="progress-bar-fill" style="width:{{ pct }}%"></div>
+                </div>
+                <span class="rule-progress-fraction">{{ pass_n }}/{{ total_n }}</span>
+              </div>
+            {% else %}
+              {{ row['Rules'] }}
+            {% endif %}
           </td>
+          <td>{{ render_status(row['GX']) }}</td>
+          <td>{{ row['Pass/Fail'] }}</td>
+          <td>{{ render_status(row['Result']) }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -89,7 +159,7 @@
 <div class="card mb-3">
   <div class="card-header">
     <h3>Failed Rules</h3>
-    <span class="status status-fail" style="font-size:11px;">{{ failed_items|length }} rule{{ 's' if failed_items|length > 1 else '' }}</span>
+    <span class="status status-fail">{{ failed_items|length }} rules</span>
   </div>
   <form method="POST" action="{{ url_for('waive_rules_action', batch_id=batch.id) }}" id="waiveForm">
     <div style="overflow-x:auto;">
@@ -108,24 +178,28 @@
           {% for item in failed_items %}
           <tr class="{% if item.rule_key in waived_rules %}row-waived{% else %}row-fail{% endif %}">
             <td class="text-center">
-              <input type="checkbox" name="waive_rules" value="{{ item.rule_key }}"
-                     class="waive-checkbox"
-                     {% if item.rule_key in waived_rules %}checked{% endif %}>
+              <input type="checkbox" name="waive_rules" value="{{ item.rule_key }}" class="waive-checkbox" {% if
+                item.rule_key in waived_rules %}checked{% endif %}>
             </td>
             <td><strong>{{ item.col }}</strong></td>
             <td class="text-mono text-sm">{{ item.exp_type }}</td>
             <td class="text-sm">{{ item.detail }}</td>
-            <td class="text-center"><strong style="color:var(--red)">{{ item.count }}</strong></td>
+            <td class="text-center">
+              <strong style="color:{% if item.count <= 5 %}var(--red-700){% else %}var(--red){% endif %}">
+                {{ item.count }}
+              </strong>
+            </td>
             <td class="text-center">{{ item.placements }}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-    <div class="mt-2">
-      <button type="submit" class="btn btn-primary">
-        Apply & Regenerate Report
-      </button>
+    <div class="sticky-footer">
+      <span class="sticky-footer-text">
+        {{ waived_rules|length }} waived · {{ failed_items|length }} rule{{ 's' if failed_items|length > 1 else '' }} failed
+      </span>
+      <button type="submit" class="btn btn-primary">Apply & Regenerate</button>
     </div>
   </form>
 </div>
@@ -137,93 +211,94 @@
 {% for run in results %}
 <div class="accordion {% if run.status != 'SUCCESS' %}open{% endif %} slide-up">
   <button class="accordion-header" type="button">
-    <span class="acc-dot {% if run.eff_status == 'SUCCESS' %}dot-pass{% elif run.eff_status == 'ERROR' %}dot-error{% else %}dot-fail{% endif %}"></span>
+    <span
+      class="acc-dot {% if run.eff_status == 'SUCCESS' %}dot-pass{% elif run.eff_status == 'ERROR' %}dot-error{% else %}dot-fail{% endif %}"></span>
     <strong>{{ run.name }}</strong>
     <span class="text-muted text-sm">— {{ run.eff_status }}</span>
     <span class="arrow">▶</span>
   </button>
   <div class="accordion-body">
     {% if run.status == 'ERROR' %}
-      <div class="alert alert-error">{{ run.error }}</div>
-      {% if run.traceback %}
-      <div class="code-block">{{ run.traceback }}</div>
-      {% endif %}
+    <div class="alert alert-error">{{ run.error }}</div>
+    {% if run.traceback %}
+    <div class="code-block">{{ run.traceback }}</div>
+    {% endif %}
     {% else %}
-      <div class="text-sm text-muted mb-2">
-        {{ run.timestamp }} · Run: {{ run.run_name or '–' }}
-      </div>
+    <div class="text-sm text-muted mb-2">
+      {{ run.timestamp }} · Run: {{ run.run_name or '–' }}
+    </div>
 
-      <!-- Validation Error Table -->
-      {% if run.failed_expectations %}
-      <table class="data-table mb-2">
-        <thead>
-          <tr>
-            <th>Status</th>
-            <th>Column</th>
-            <th>Expectation</th>
-            <th>Expected</th>
-            <th>Errors</th>
-            <th>Error %</th>
-            <th>Examples</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for exp in run.failed_expectations %}
-          <tr class="{% if exp.is_waived %}row-waived{% else %}row-fail{% endif %}">
-            <td>
-              {% if exp.is_waived %}
-                <span class="status status-error" style="font-size:11px;">Waived</span>
-              {% else %}
-                <span class="status status-fail" style="font-size:11px;">Failed</span>
-              {% endif %}
-            </td>
-            <td><strong>{{ exp.column }}</strong></td>
-            <td class="text-mono text-sm">{{ exp.exp_type }}</td>
-            <td class="text-sm">{{ exp.expected }}</td>
-            <td class="text-center">{{ exp.error_count }}</td>
-            <td class="text-center">{{ "%.1f"|format(exp.error_pct) }}%</td>
-            <td class="text-mono text-xs">{{ exp.examples|join(', ') }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      {% endif %}
+    <!-- Validation Error Table -->
+    {% if run.failed_expectations %}
+    <table class="data-table mb-2">
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Column</th>
+          <th>Expectation</th>
+          <th>Expected</th>
+          <th>Errors</th>
+          <th>Error %</th>
+          <th>Examples</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for exp in run.failed_expectations %}
+        <tr class="{% if exp.is_waived %}row-waived{% else %}row-fail{% endif %}">
+          <td>
+            {% if exp.is_waived %}
+            <span class="status status-error" style="font-size:11px;">Waived</span>
+            {% else %}
+            <span class="status status-fail" style="font-size:11px;">Failed</span>
+            {% endif %}
+          </td>
+          <td><strong>{{ exp.column }}</strong></td>
+          <td class="text-mono text-sm">{{ exp.exp_type }}</td>
+          <td class="text-sm">{{ exp.expected }}</td>
+          <td class="text-center">{{ exp.error_count }}</td>
+          <td class="text-center">{{ "%.1f"|format(exp.error_pct) }}%</td>
+          <td class="text-mono text-xs">{{ exp.examples|join(', ') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
 
-      <!-- AI Prompt (collapsed) -->
-      {% if run.ai_prompt %}
-      <div class="accordion">
-        <button class="accordion-header" type="button">
-          AI Prompt <span class="arrow">▶</span>
-        </button>
-        <div class="accordion-body">
-          <div class="code-block">{{ run.ai_prompt }}</div>
-        </div>
+    <!-- AI Prompt (collapsed) -->
+    {% if run.ai_prompt %}
+    <div class="accordion">
+      <button class="accordion-header" type="button">
+        AI Prompt <span class="arrow">▶</span>
+      </button>
+      <div class="accordion-body">
+        <div class="code-block">{{ run.ai_prompt }}</div>
       </div>
-      {% endif %}
+    </div>
+    {% endif %}
 
-      {% if run.ai_response %}
-      <div class="accordion">
-        <button class="accordion-header" type="button">
-          AI Response <span class="arrow">▶</span>
-        </button>
-        <div class="accordion-body">
-          <div class="code-block">{{ run.ai_response }}</div>
-        </div>
+    {% if run.ai_response %}
+    <div class="accordion">
+      <button class="accordion-header" type="button">
+        AI Response <span class="arrow">▶</span>
+      </button>
+      <div class="accordion-body">
+        <div class="code-block">{{ run.ai_response }}</div>
       </div>
-      {% endif %}
+    </div>
+    {% endif %}
 
-      {% if run.process_log %}
-      <div class="accordion">
-        <button class="accordion-header" type="button">
-          Process Log <span class="arrow">▶</span>
-        </button>
-        <div class="accordion-body">
-          {% for entry in run.process_log %}
-            <div class="text-sm" style="margin-bottom:4px;">{{ entry|safe }}</div>
-          {% endfor %}
-        </div>
+    {% if run.process_log %}
+    <div class="accordion">
+      <button class="accordion-header" type="button">
+        Process Log <span class="arrow">▶</span>
+      </button>
+      <div class="accordion-body">
+        {% for entry in run.process_log %}
+        <div class="text-sm" style="margin-bottom:4px;">{{ entry|safe }}</div>
+        {% endfor %}
       </div>
-      {% endif %}
+    </div>
+    {% endif %}
     {% endif %}
   </div>
 </div>
@@ -231,11 +306,11 @@
 
 <!-- Actions -->
 <div class="mt-3" style="display:flex;gap:12px;">
-  <a href="{{ url_for('upload_page') }}" class="btn btn-secondary btn-lg" style="flex:1;">
+  <a href="{{ url_for('upload_page') }}" class="btn btn-secondary" style="flex:1;">
     New Validation
   </a>
   {% if batch.pdf_path %}
-  <a href="{{ url_for('download_pdf', batch_id=batch.id) }}" class="btn btn-primary btn-lg" style="flex:1;">
+  <a href="{{ url_for('download_pdf', batch_id=batch.id) }}" class="btn btn-primary" style="flex:1;">
     Download PDF
   </a>
   {% endif %}

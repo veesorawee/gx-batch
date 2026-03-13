@@ -361,15 +361,15 @@ def get_tracker_rows(tracker, results, waived_rules=None):
                             passed_exp += 1
             if total_exp > 0:
                 v_copy["Pass/Fail"] = f"{passed_exp}/{total_exp} ({round(passed_exp/total_exp*100)}%)"
-                v_copy["Result"] = "✅ Passed" if passed_exp == total_exp else "❌ Mismatch"
+                v_copy["Result"] = "Passed" if passed_exp == total_exp else "Mismatch"
             else:
                 v_copy["Pass/Fail"] = "0/0"
-                v_copy["Result"] = "🚨 Error (No Rules)"
-        if "✅" in v_copy.get("Result", ""):
+                v_copy["Result"] = "Error (No Rules)"
+        if "Passed" in v_copy.get("Result", ""):
             v_copy["_status_class"] = "row-pass"
-        elif "❌" in v_copy.get("Result", ""):
+        elif "Mismatch" in v_copy.get("Result", ""):
             v_copy["_status_class"] = "row-fail"
-        elif "🚨" in v_copy.get("Result", ""):
+        elif "Error" in v_copy.get("Result", ""):
             v_copy["_status_class"] = "row-error"
         else:
             v_copy["_status_class"] = "row-skip"
@@ -422,15 +422,25 @@ def generate_batch_pdf(batch):
     tracker = batch.get("tracker", {})
     tracker_rows = get_tracker_rows(tracker, results, waived)
 
+    def render_pdf_status(v):
+        if not v: return ""
+        v_str = str(v)
+        if any(w in v_str for w in ['Found', 'Done', 'Passed', 'SUCCESS']): return f"✅ {v_str}"
+        if any(w in v_str for w in ['Mismatch', 'Failed', 'FAILURE']): return f"❌ {v_str}"
+        if any(w in v_str for w in ['Error', 'No DB', 'No JSON']): return f"❌ {v_str}"
+        if any(w in v_str for w in ['Skipped', 'No Data']): return f"⏭️ {v_str}"
+        if any(w in v_str for w in ['Queued', 'Running', 'Generating', 'Checking', 'Retrying']): return f"⏳ {v_str}"
+        return v_str
+
     # --- Summary table rows ---
     summary_rows_html = ""
     for v in tracker_rows:
         sc = v.pop("_status_class", "")
         summary_rows_html += f"""<tr class="{sc}">
             <td>{v.get('Event Type','')}</td><td>{v.get('Placement ID','')}</td>
-            <td>{v.get('Data Check','')}</td><td>{v.get('AI','')}</td>
-            <td>{v.get('Rules','')}</td><td>{v.get('GX','')}</td>
-            <td>{v.get('Pass/Fail','')}</td><td>{v.get('Result','')}</td></tr>"""
+            <td>{render_pdf_status(v.get('Data Check',''))}</td><td>{render_pdf_status(v.get('AI',''))}</td>
+            <td>{v.get('Rules','')}</td><td>{render_pdf_status(v.get('GX',''))}</td>
+            <td>{v.get('Pass/Fail','')}</td><td>{render_pdf_status(v.get('Result',''))}</td></tr>"""
 
     # --- Per-placement detail sections ---
     sorted_results = sorted(results, key=lambda r: (r.get('plc_id', ''), r.get('ev_type', '')))
@@ -451,7 +461,7 @@ def generate_batch_pdf(batch):
             details_html += f"""<div class="spec-section">
                 <h3>{placement_label}</h3>
                 <p class="suite-ref">Suite: {suite_ref}</p>
-                <p>❌ ERROR: {run_data.get('error','')}</p></div>"""
+                <p><b>ERROR:</b> {run_data.get('error','')}</p></div>"""
             continue
 
         log_data = run_data.get("log_data", {})
@@ -463,7 +473,7 @@ def generate_batch_pdf(batch):
                 details_html += f"""<div class="spec-section">
                     <h3>{placement_label}</h3>
                     <p class="suite-ref">Suite: {suite_ref}</p>
-                    <p>❌ No validation rules generated.</p></div>"""
+                    <p><b>ERROR:</b> No validation rules generated.</p></div>"""
                 continue
 
             # Collect rows grouped by column
@@ -530,7 +540,7 @@ def generate_batch_pdf(batch):
                     all_rows += f'<td class="status-cell">{r["status_text"]}</td><td class="exp-cell">{r["short_type"]}</td><td class="expected-cell">{r["expected"]}</td><td class="num-cell">{r["unexp_count"]}</td><td class="num-cell">{r["pct_str"]}</td><td class="examples-cell">{r["ex_str"]}</td></tr>'
 
             total_exp = pass_count + fail_count_detail + waive_count
-            status_label = "PASS ✅" if fail_count_detail == 0 else "FAILURE ❌"
+            status_label = "✅ PASS" if fail_count_detail == 0 else "❌ FAILURE"
             summary_badges = f"✅ {pass_count} passed | ❌ {fail_count_detail} failed"
             if waive_count > 0: summary_badges += f" | ⚠️ {waive_count} waived"
             summary_badges += f" | Total: {total_exp}"
@@ -687,12 +697,12 @@ def db_checker_worker(specs, sql_cfg, val_params, db_config, shared):
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-        push_sse("status", {"text": "✅ Trino connected!"})
+        push_sse("status", {"text": "Trino connected!"})
     except Exception as e:
-        push_sse("status", {"text": f"🚨 Cannot connect to Trino: {e}"})
+        push_sse("status", {"text": f"Cannot connect to Trino: {e}"})
         for spec_str in specs:
-            push_sse("tracker_update", {"spec": spec_str, "field": "Data Check", "value": "🚨 No DB"})
-            push_sse("tracker_update", {"spec": spec_str, "field": "Result", "value": "🚨 DB Error"})
+            push_sse("tracker_update", {"spec": spec_str, "field": "Data Check", "value": "No DB"})
+            push_sse("tracker_update", {"spec": spec_str, "field": "Result", "value": "DB Error"})
             shared["completed_count"] += 1
             push_sse("progress", {"completed": shared["completed_count"]})
         shared["is_done"] = True
@@ -701,7 +711,7 @@ def db_checker_worker(specs, sql_cfg, val_params, db_config, shared):
     for spec_str in specs:
         ev_type, plc_id = spec_str.split(" | ")
         push_sse("status", {"text": f"🔍 Checking: {ev_type} ({plc_id})"})
-        push_sse("tracker_update", {"spec": spec_str, "field": "Data Check", "value": "🔄 Checking..."})
+        push_sse("tracker_update", {"spec": spec_str, "field": "Data Check", "value": "Checking..."})
         final_sql = prepare_spec_sql(base_sql, ev_type, plc_id)
         formatted_sql = final_sql.format(dt=val_params["date"], extra_where_conditions="")
         check_sql = f"SELECT 1 FROM ({formatted_sql}) AS cq LIMIT 1"
@@ -717,16 +727,16 @@ def db_checker_worker(specs, sql_cfg, val_params, db_config, shared):
         if has_data:
             shared["found_count"] += 1
             shared["queue"].append(spec_str)
-            push_sse("tracker_update", {"spec": spec_str, "field": "Data Check", "value": "✅ Found"})
-            push_sse("tracker_update", {"spec": spec_str, "field": "AI", "value": "⏳ Queued"})
+            push_sse("tracker_update", {"spec": spec_str, "field": "Data Check", "value": "Found"})
+            push_sse("tracker_update", {"spec": spec_str, "field": "AI", "value": "Queued"})
         else:
-            push_sse("tracker_update", {"spec": spec_str, "field": "Data Check", "value": "⏭️ No Data"})
-            push_sse("tracker_update", {"spec": spec_str, "field": "Result", "value": "⏭️ Skipped"})
+            push_sse("tracker_update", {"spec": spec_str, "field": "Data Check", "value": "No Data"})
+            push_sse("tracker_update", {"spec": spec_str, "field": "Result", "value": "Skipped"})
             shared["completed_count"] += 1
             push_sse("progress", {"completed": shared["completed_count"]})
         time.sleep(0.1)
 
-    push_sse("status", {"text": f"✅ DB scan done. Found {shared['found_count']}/{len(specs)}"})
+    push_sse("status", {"text": f"DB scan done. Found {shared['found_count']}/{len(specs)}"})
     shared["is_done"] = True
 
 
@@ -736,7 +746,7 @@ def ai_worker(shared, full_df):
             spec_str = shared["queue"].pop(0)
             ev_type, plc_id = spec_str.split(" | ")
             suite_name = f"suite_{ev_type}_{plc_id}".replace(" ", "_").replace("/", "_").replace("\\", "_")
-            push_sse("tracker_update", {"spec": spec_str, "field": "AI", "value": "🔄 Generating..."})
+            push_sse("tracker_update", {"spec": spec_str, "field": "AI", "value": "Generating..."})
             try:
                 df_filtered = full_df[(full_df['event type'] == ev_type) & (full_df['placement_id'] == plc_id)].copy()
                 flatten_map = {}
@@ -796,9 +806,9 @@ def ai_worker(shared, full_df):
                     with open(exp_path, 'w', encoding='utf-8') as ef:
                         json.dump(parsed, ef, indent=4, ensure_ascii=False)
 
-                    push_sse("tracker_update", {"spec": spec_str, "field": "AI", "value": "✅ Done"})
+                    push_sse("tracker_update", {"spec": spec_str, "field": "AI", "value": "Done"})
                     push_sse("tracker_update", {"spec": spec_str, "field": "Rules", "value": str(len(parsed))})
-                    push_sse("tracker_update", {"spec": spec_str, "field": "GX", "value": "⏳ Queued"})
+                    push_sse("tracker_update", {"spec": spec_str, "field": "GX", "value": "Queued"})
                     shared["ai_queue"].append({
                         "spec_str": spec_str, "ev_type": ev_type, "plc_id": plc_id,
                         "suite_name": suite_name, "expectations": final_expectations,
@@ -806,14 +816,14 @@ def ai_worker(shared, full_df):
                         "ai_response": response.text if response else "", "rule_count": len(parsed),
                     })
                 else:
-                    push_sse("tracker_update", {"spec": spec_str, "field": "AI", "value": "🚨 No JSON"})
-                    push_sse("tracker_update", {"spec": spec_str, "field": "Result", "value": "🚨 AI Error"})
+                    push_sse("tracker_update", {"spec": spec_str, "field": "AI", "value": "No JSON"})
+                    push_sse("tracker_update", {"spec": spec_str, "field": "Result", "value": "AI Error"})
                     shared["completed_count"] += 1
                     push_sse("progress", {"completed": shared["completed_count"]})
             except Exception as e:
                 err_msg = f"{type(e).__name__}: {str(e)[:40]}"
-                push_sse("tracker_update", {"spec": spec_str, "field": "AI", "value": f"🚨 {type(e).__name__}"})
-                push_sse("tracker_update", {"spec": spec_str, "field": "Result", "value": f"🚨 {err_msg}"})
+                push_sse("tracker_update", {"spec": spec_str, "field": "AI", "value": f"{type(e).__name__}"})
+                push_sse("tracker_update", {"spec": spec_str, "field": "Result", "value": f"{err_msg}"})
                 shared["completed_count"] += 1
                 push_sse("progress", {"completed": shared["completed_count"]})
             time.sleep(0.1)
@@ -837,7 +847,7 @@ def gx_worker(shared, val_params_tuple, sql_cfg, db_config):
                 spec_str = item["spec_str"]
                 ev_type, plc_id = item["ev_type"], item["plc_id"]
                 suite_name = item["suite_name"]
-                push_sse("tracker_update", {"spec": spec_str, "field": "GX", "value": "🔄 Running..."})
+                push_sse("tracker_update", {"spec": spec_str, "field": "GX", "value": "Running..."})
 
                 base_sql = ""
                 if sql_cfg["source"] == "file":
@@ -904,11 +914,11 @@ def gx_worker(shared, val_params_tuple, sql_cfg, db_config):
                                 passed_e += 1
                     pct = round(passed_e / total_e * 100) if total_e > 0 else 0
                     push_sse("tracker_update", {"spec": spec_str, "field": "Pass/Fail", "value": f"{passed_e}/{total_e} ({pct}%)"})
-                    push_sse("tracker_update", {"spec": spec_str, "field": "GX", "value": "✅ Done"})
+                    push_sse("tracker_update", {"spec": spec_str, "field": "GX", "value": "Done"})
                 else:
-                    push_sse("tracker_update", {"spec": spec_str, "field": "GX", "value": "🚨 Error"})
+                    push_sse("tracker_update", {"spec": spec_str, "field": "GX", "value": "Error"})
 
-                result_text = "✅ Passed" if status == "SUCCESS" else ("🚨 Error" if status == "ERROR" else "❌ Mismatch")
+                result_text = "Passed" if status == "SUCCESS" else ("Error" if status == "ERROR" else "Mismatch")
                 push_sse("tracker_update", {"spec": spec_str, "field": "Result", "value": result_text})
                 shared["completed_count"] += 1
                 push_sse("progress", {"completed": shared["completed_count"]})
@@ -925,11 +935,11 @@ def gx_worker(shared, val_params_tuple, sql_cfg, db_config):
                 if retries < 1:
                     shared["retry_count"][spec_str] = retries + 1
                     shared["last_gx_error"][spec_str] = f"{type(e).__name__}: {str(e)}"
-                    push_sse("tracker_update", {"spec": spec_str, "field": "GX", "value": "🚨 Retrying AI..."})
+                    push_sse("tracker_update", {"spec": spec_str, "field": "GX", "value": "Retrying AI..."})
                     shared["queue"].insert(0, spec_str)
                 else:
-                    push_sse("tracker_update", {"spec": spec_str, "field": "GX", "value": "🚨 Error"})
-                    push_sse("tracker_update", {"spec": spec_str, "field": "Result", "value": f"🚨 {type(e).__name__}"})
+                    push_sse("tracker_update", {"spec": spec_str, "field": "GX", "value": "Error"})
+                    push_sse("tracker_update", {"spec": spec_str, "field": "Result", "value": f"{type(e).__name__}"})
                     shared["results"].append({
                         "id": str(uuid.uuid4()), "name": item["suite_name"],
                         "ev_type": item["ev_type"], "plc_id": item["plc_id"],
@@ -1046,7 +1056,7 @@ def start_pipeline():
         ev, plc = spec.split(" | ")
         shared["tracker"][spec] = {
             "Event Type": ev, "Placement ID": plc,
-            "Data Check": "⏳ Queued", "AI": "-", "Rules": "-",
+            "Data Check": "Queued", "AI": "-", "Rules": "-",
             "GX": "-", "Pass/Fail": "-", "Result": "-",
         }
 

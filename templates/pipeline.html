@@ -39,9 +39,9 @@
         <table class="data-table" id="trackerTable">
           <thead>
             <tr>
-              <th>Event Type</th>
+              <th>Event type</th>
               <th>Placement ID</th>
-              <th>Data Check</th>
+              <th>Data check</th>
               <th>AI</th>
               <th>Rules</th>
               <th>GX</th>
@@ -150,7 +150,13 @@ function updateCell(specStr, field, content) {
 }
 
 function statusBadge(text, type) {
-  return '<span class="status status-' + type + '">' + text + '</span>';
+  let icon = '';
+  if (type === 'pass' || type === 'found') icon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px"><circle cx="12" cy="12" r="5" fill="currentColor"></circle></svg>';
+  else if (type === 'fail' || type === 'error') icon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
+  else if (type === 'running') icon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" class="spin-icon" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/></svg>';
+  else if (type === 'queued' || type === 'skip' || type === 'nodata') icon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>';
+
+  return '<span class="status status-' + type + '">' + icon + text + '</span>';
 }
 
 // SSE Connection
@@ -164,11 +170,13 @@ evtSource.addEventListener('tracker_update', function(e) {
 
   let html = value;
   if (value.includes('Queued')) html = statusBadge(value, 'queued');
-  else if (value.includes('🔄') || value.includes('Running') || value.includes('Generating')) html = statusBadge(value, 'running');
-  else if (value.includes('✅')) html = statusBadge(value, 'pass');
-  else if (value.includes('❌') || value.includes('Mismatch')) html = statusBadge(value, 'fail');
-  else if (value.includes('🚨') || value.includes('Error')) html = statusBadge(value, 'error');
-  else if (value.includes('⏭️') || value.includes('Skipped')) html = statusBadge(value, 'skip');
+  else if (value.includes('Running') || value.includes('Generating') || value.includes('Retrying') || value.includes('Checking')) html = statusBadge(value, 'running');
+  else if (value.includes('Found')) html = statusBadge(value, 'found');
+  else if (value.includes('Done') || value.includes('Passed')) html = statusBadge(value, 'pass');
+  else if (value.includes('Mismatch')) html = statusBadge(value, 'fail');
+  else if (value.includes('Error') || value.includes('No DB') || value.includes('No JSON')) html = statusBadge(value, 'error');
+  else if (value.includes('No Data')) html = statusBadge(value, 'nodata');
+  else if (value.includes('Skipped')) html = statusBadge(value, 'skip');
 
   const fieldMap = {
     'Data Check': 'data-check',
@@ -198,8 +206,8 @@ evtSource.addEventListener('tracker_update', function(e) {
     else if (value.includes('Retrying')) addLog('Retrying AI for <b>' + shortSpec + '</b>…', 'warning');
     else if (value.includes('Error')) addLog('GX error — <b>' + shortSpec + '</b>', 'error');
   } else if (field === 'Result') {
-    if (value.includes('Passed')) addLog('<b>' + shortSpec + '</b> — <span style="color:var(--green);font-weight:600">PASSED</span>', 'success');
-    else if (value.includes('Mismatch')) addLog('<b>' + shortSpec + '</b> — <span style="color:var(--red);font-weight:600">FAILED</span>', 'error');
+    if (value.includes('Passed')) addLog('<b>' + shortSpec + '</b> — PASSED', 'success');
+    else if (value.includes('Mismatch')) addLog('<b>' + shortSpec + '</b> — FAILED', 'error');
     else if (value.includes('Error')) addLog('<b>' + shortSpec + '</b> — error', 'error');
   }
 });
