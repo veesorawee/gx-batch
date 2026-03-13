@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Pipeline Running — Tracking Validation{% endblock %}
+{% block title %}Pipeline — Tracking QA{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -10,14 +10,14 @@
     <span class="sep">›</span>
     <span>Pipeline</span>
   </div>
-  <h2>🚀 Validation Pipeline</h2>
+  <h2>Validation Pipeline</h2>
   <p id="pipelineSubtitle">Processing {{ total_specs }} specs...</p>
 </div>
 
 <!-- Status Bar -->
 <div class="pipeline-status-bar" id="statusBar">
   <div class="dot active" id="statusDot"></div>
-  <span id="statusText">Connecting to pipeline...</span>
+  <span id="statusText" style="font-size:13.5px;font-weight:500;">Connecting to pipeline...</span>
 </div>
 
 <!-- Progress Bar -->
@@ -32,7 +32,7 @@
   <div class="pipeline-col-main">
     <div class="card">
       <div class="card-header">
-        <h3>📋 Spec Progress</h3>
+        <h3>Spec Progress</h3>
         <span class="status status-running" id="liveIndicator">● LIVE</span>
       </div>
       <div style="overflow-x:auto;">
@@ -54,12 +54,12 @@
             <tr id="row_{{ loop.index0 }}" data-spec="{{ spec }}">
               <td>{{ spec.split(' | ')[0] }}</td>
               <td class="text-mono">{{ spec.split(' | ')[1] }}</td>
-              <td class="col-data-check"><span class="status status-queued">⏳ Queued</span></td>
-              <td class="col-ai">-</td>
-              <td class="col-rules">-</td>
-              <td class="col-gx">-</td>
-              <td class="col-passfail">-</td>
-              <td class="col-result">-</td>
+              <td class="col-data-check"><span class="status status-queued">Queued</span></td>
+              <td class="col-ai">–</td>
+              <td class="col-rules">–</td>
+              <td class="col-gx">–</td>
+              <td class="col-passfail">–</td>
+              <td class="col-result">–</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -72,7 +72,9 @@
   <div class="pipeline-col-log">
     <div class="activity-log-panel">
       <div class="activity-log-header">
-        <span class="activity-log-icon">⚡</span>
+        <span class="activity-log-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        </span>
         <span>Activity Log</span>
         <span class="activity-log-dot" id="logDot"></span>
       </div>
@@ -87,9 +89,9 @@
 </div>
 
 <!-- Done Actions (hidden initially) -->
-<div id="doneActions" class="hidden mt-3 fade-in">
-  <a href="#" id="viewResultsBtn" class="btn btn-primary btn-lg btn-block">
-    📊 View Results
+<div id="doneActions" class="hidden mt-2 fade-in" style="text-align:right;">
+  <a href="#" id="viewResultsBtn" class="btn btn-primary">
+    View Results →
   </a>
 </div>
 {% endblock %}
@@ -112,9 +114,7 @@ function addLog(msg, type) {
   entry.className = 'log-entry log-' + (type || 'info') + ' log-new';
   entry.innerHTML = '<span class="log-time">' + elapsed() + '</span><span class="log-msg">' + msg + '</span>';
   log.appendChild(entry);
-  // Remove animation class after it plays
   setTimeout(() => entry.classList.remove('log-new'), 400);
-  // Keep only latest 10 entries visible, fade out old ones
   const maxVisible = 10;
   const entries = log.querySelectorAll('.log-entry');
   if (entries.length > maxVisible) {
@@ -137,8 +137,6 @@ function updateCell(specStr, field, content) {
     if (row.dataset.spec === specStr) {
       const cell = row.querySelector('.col-' + field);
       if (cell) cell.innerHTML = content;
-
-      // Color the row based on result
       if (field === 'result') {
         row.className = '';
         if (content.includes('Passed')) row.classList.add('row-pass');
@@ -165,7 +163,6 @@ evtSource.addEventListener('tracker_update', function(e) {
   const value = data.value;
 
   let html = value;
-  // Convert status text to badges
   if (value.includes('Queued')) html = statusBadge(value, 'queued');
   else if (value.includes('🔄') || value.includes('Running') || value.includes('Generating')) html = statusBadge(value, 'running');
   else if (value.includes('✅')) html = statusBadge(value, 'pass');
@@ -183,27 +180,27 @@ evtSource.addEventListener('tracker_update', function(e) {
   };
   updateCell(spec, fieldMap[field] || field, html);
 
-  // Add meaningful events to activity log
+  // Activity log with clean messages
   const shortSpec = spec.split(' | ').map(s => s.split('/').pop()).join(' · ');
   if (field === 'Data Check') {
-    if (value.includes('Found')) addLog('✅ <b>' + shortSpec + '</b> — data found', 'success');
-    else if (value.includes('No Data')) addLog('⏭️ <b>' + shortSpec + '</b> — no data, skipped', 'skip');
-    else if (value.includes('Checking')) addLog('🔍 Checking data for <b>' + shortSpec + '</b>...', 'info');
-    else if (value.includes('Error')) addLog('🚨 <b>' + shortSpec + '</b> — query error', 'error');
+    if (value.includes('Found')) addLog('<b>' + shortSpec + '</b> — data found', 'success');
+    else if (value.includes('No Data')) addLog('<b>' + shortSpec + '</b> — no data, skipped', 'skip');
+    else if (value.includes('Checking')) addLog('Checking data for <b>' + shortSpec + '</b>…', 'info');
+    else if (value.includes('Error')) addLog('<b>' + shortSpec + '</b> — query error', 'error');
   } else if (field === 'AI') {
-    if (value.includes('Generating')) addLog('🧠 AI generating rules for <b>' + shortSpec + '</b>...', 'info');
-    else if (value.includes('Done')) addLog('✅ AI rules ready for <b>' + shortSpec + '</b>', 'success');
-    else if (value.includes('Rate limited')) addLog('⏳ Rate limited, waiting... <b>' + shortSpec + '</b>', 'warning');
-    else if (value.includes('🚨')) addLog('🚨 AI error for <b>' + shortSpec + '</b>: ' + value, 'error');
+    if (value.includes('Generating')) addLog('Generating rules for <b>' + shortSpec + '</b>…', 'info');
+    else if (value.includes('Done')) addLog('AI rules ready — <b>' + shortSpec + '</b>', 'success');
+    else if (value.includes('Rate limited')) addLog('Rate limited, retrying… <b>' + shortSpec + '</b>', 'warning');
+    else if (value.includes('🚨')) addLog('AI error — <b>' + shortSpec + '</b>', 'error');
   } else if (field === 'GX') {
-    if (value.includes('Running')) addLog('🔄 Running GX validation for <b>' + shortSpec + '</b>...', 'info');
-    else if (value.includes('Done')) addLog('✅ GX complete for <b>' + shortSpec + '</b>', 'success');
-    else if (value.includes('Retrying')) addLog('🔁 Retrying AI for <b>' + shortSpec + '</b>...', 'warning');
-    else if (value.includes('Error')) addLog('🚨 GX error for <b>' + shortSpec + '</b>', 'error');
+    if (value.includes('Running')) addLog('Running GX for <b>' + shortSpec + '</b>…', 'info');
+    else if (value.includes('Done')) addLog('GX complete — <b>' + shortSpec + '</b>', 'success');
+    else if (value.includes('Retrying')) addLog('Retrying AI for <b>' + shortSpec + '</b>…', 'warning');
+    else if (value.includes('Error')) addLog('GX error — <b>' + shortSpec + '</b>', 'error');
   } else if (field === 'Result') {
-    if (value.includes('Passed')) addLog('🎉 <b>' + shortSpec + '</b> — <span style="color:var(--green)">PASSED</span>', 'success');
-    else if (value.includes('Mismatch')) addLog('❌ <b>' + shortSpec + '</b> — <span style="color:var(--red)">FAILED</span>', 'error');
-    else if (value.includes('Error')) addLog('🚨 <b>' + shortSpec + '</b> — error', 'error');
+    if (value.includes('Passed')) addLog('<b>' + shortSpec + '</b> — <span style="color:var(--green);font-weight:600">PASSED</span>', 'success');
+    else if (value.includes('Mismatch')) addLog('<b>' + shortSpec + '</b> — <span style="color:var(--red);font-weight:600">FAILED</span>', 'error');
+    else if (value.includes('Error')) addLog('<b>' + shortSpec + '</b> — error', 'error');
   }
 });
 
@@ -228,14 +225,14 @@ evtSource.addEventListener('done', function(e) {
   document.getElementById('statusDot').classList.remove('active');
   document.getElementById('statusDot').classList.add('idle');
   document.getElementById('statusDot').style.background = 'var(--green)';
-  document.getElementById('statusText').textContent = '✅ Pipeline complete!';
+  document.getElementById('statusText').textContent = 'Pipeline complete';
   document.getElementById('liveIndicator').className = 'status status-pass';
   document.getElementById('liveIndicator').textContent = '✓ DONE';
   document.getElementById('progressBar').style.width = '100%';
   document.getElementById('progressText').textContent = totalSpecs + ' / ' + totalSpecs + ' completed (100%)';
 
   document.getElementById('logDot').classList.add('done');
-  addLog('🏁 <b>Pipeline complete!</b> All ' + totalSpecs + ' specs processed in <b>' + elapsed() + '</b>', 'done');
+  addLog('<b>Pipeline complete</b> — ' + totalSpecs + ' specs processed in <b>' + elapsed() + '</b>', 'done');
 
   const doneDiv = document.getElementById('doneActions');
   doneDiv.classList.remove('hidden');
@@ -243,9 +240,9 @@ evtSource.addEventListener('done', function(e) {
 });
 
 evtSource.onerror = function() {
-  document.getElementById('statusText').textContent = '⚠️ Connection lost. Refresh to reconnect.';
-  document.getElementById('statusDot').style.background = 'var(--orange)';
-  addLog('⚠️ SSE connection lost', 'error');
+  document.getElementById('statusText').textContent = 'Connection lost. Refresh to reconnect.';
+  document.getElementById('statusDot').style.background = 'var(--amber)';
+  addLog('SSE connection lost', 'error');
 };
 </script>
 {% endblock %}

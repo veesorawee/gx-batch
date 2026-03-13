@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="color-scheme" content="dark">
   <title>{% block title %}Tracking Validation{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   {% block head %}{% endblock %}
@@ -13,43 +12,45 @@
     <!-- Sidebar -->
     <nav class="sidebar">
       <div class="sidebar-brand">
-        <div class="logo">⚡</div>
+        <div class="logo">PA</div>
         <div>
           <h1>Tracking QA</h1>
-          <small>Data Validation Pipeline</small>
+          <small>Data Validation</small>
         </div>
       </div>
 
       <div class="sidebar-nav">
         <a href="{{ url_for('upload_page') }}" class="{% if active_page == 'upload' %}active{% endif %}">
-          <span class="icon">📁</span> Upload Spec
+          <svg class="nav-icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+          Upload
         </a>
         {% if session.get('configured') %}
         <a href="{{ url_for('configure_page') }}" class="{% if active_page == 'configure' %}active{% endif %}">
-          <span class="icon">⚙️</span> Configure
+          <svg class="nav-icon" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+          Configure
         </a>
         {% endif %}
         {% if session.get('pipeline_started') %}
         <a href="{{ url_for('pipeline_page') }}" class="{% if active_page == 'pipeline' %}active{% endif %}">
-          <span class="icon">🚀</span> Pipeline
+          <svg class="nav-icon" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          Pipeline
         </a>
         {% endif %}
       </div>
 
       <div class="sidebar-history">
-        <h3>📜 Batch History</h3>
+        <h3>History</h3>
         {% if batch_history %}
           {% for batch in batch_history %}
           <a href="{{ url_for('results_page', batch_id=batch.id) }}"
-             class="{% if active_page == 'results' and active_batch_id == batch.id %}active{% endif %}"
-             style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:6px;text-decoration:none;color:var(--text-secondary);font-size:13px;margin-bottom:2px;transition:all 0.15s;">
-            {% if batch.all_pass %}✅{% elif batch.has_pass %}⚠️{% else %}❌{% endif %}
+             class="history-link {% if active_page == 'results' and active_batch_id == batch.id %}active{% endif %}">
+            <span class="history-dot {% if batch.all_pass %}dot-pass{% elif batch.has_pass %}dot-warn{% else %}dot-fail{% endif %}"></span>
             <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ batch.spec_file }}</span>
-            <span style="font-size:11px;color:var(--text-muted);">{{ batch.date_queried }}</span>
+            <span style="font-size:10.5px;color:var(--text-muted);">{{ batch.date_queried }}</span>
           </a>
           {% endfor %}
         {% else %}
-          <p class="text-muted text-sm" style="padding:8px 12px;">No history yet</p>
+          <p class="text-muted text-sm" style="padding:6px 12px;">No history yet</p>
         {% endif %}
       </div>
     </nav>
@@ -69,7 +70,6 @@
   </div>
 
   <script>
-    // Toggle accordion
     document.addEventListener('click', function(e) {
       const header = e.target.closest('.accordion-header');
       if (header) {

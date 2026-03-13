@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Configure — Tracking Validation{% endblock %}
+{% block title %}Configure — Tracking QA{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -8,7 +8,7 @@
     <span class="sep">›</span>
     <span>Configure</span>
   </div>
-  <h2>⚙️ Configure Validation</h2>
+  <h2>Configure Validation</h2>
   <p>File: <strong>{{ filename }}</strong> — {{ specs|length }} event/placement pairs found</p>
 </div>
 
@@ -17,7 +17,7 @@
   <!-- Settings -->
   <div class="card mb-3 slide-up">
     <div class="card-header">
-      <h3>📅 Settings</h3>
+      <h3>Settings</h3>
     </div>
     <div class="form-row">
       <div class="form-group">
@@ -36,14 +36,14 @@
   <!-- SQL Source -->
   <div class="card mb-3 slide-up">
     <div class="card-header">
-      <h3>🗄️ SQL Source</h3>
+      <h3>SQL Source</h3>
     </div>
     <div class="form-group">
-      <div style="display:flex;gap:12px;margin-bottom:12px;">
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+      <div style="display:flex;gap:16px;margin-bottom:12px;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13.5px;">
           <input type="radio" name="sql_source" value="custom" checked onchange="toggleSqlSource()"> Custom SQL
         </label>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13.5px;">
           <input type="radio" name="sql_source" value="file" onchange="toggleSqlSource()"> SQL File
         </label>
       </div>
@@ -71,10 +71,10 @@
   <!-- Spec Selection -->
   <div class="card mb-3 slide-up">
     <div class="card-header">
-      <h3>📌 Select Specs to Validate</h3>
+      <h3>Select Specs to Validate</h3>
       <div>
-        <button type="button" class="btn btn-ghost" onclick="toggleAll(true)">Select All</button>
-        <button type="button" class="btn btn-ghost" onclick="toggleAll(false)">Deselect All</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="toggleAll(true)">Select All</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="toggleAll(false)">Deselect All</button>
       </div>
     </div>
     <div class="spec-list">
@@ -93,7 +93,7 @@
 
   <!-- Submit -->
   <button type="submit" class="btn btn-primary btn-lg btn-block" id="startBtn">
-    🚀 Start Validation
+    Start Validation
   </button>
 </form>
 {% endblock %}

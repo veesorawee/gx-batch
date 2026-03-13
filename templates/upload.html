@@ -1,22 +1,35 @@
 {% extends "base.html" %}
-{% block title %}Upload Spec — Tracking Validation{% endblock %}
+{% block title %}Upload Spec — Tracking QA{% endblock %}
 
 {% block content %}
 <div class="page-header">
-  <h2>📁 Upload Data Spec</h2>
+  <h2>Upload Data Spec</h2>
   <p>Upload your CSV or Excel spec file to begin validation</p>
 </div>
 
 <form method="POST" action="{{ url_for('upload_page') }}" enctype="multipart/form-data" id="uploadForm">
   <div class="upload-zone" id="uploadZone">
-    <div class="upload-icon">📄</div>
+    <div class="upload-icon">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/>
+        <line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+    </div>
     <h3>Drag & drop your spec file here</h3>
     <p>or click to browse — supports <strong>.csv</strong> and <strong>.xlsx</strong></p>
     <input type="file" name="spec_file" id="specFile" accept=".csv,.xlsx,.xls" required>
   </div>
 
   <div id="fileInfo" class="file-info hidden">
-    <span class="file-icon">📊</span>
+    <span class="file-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/>
+        <line x1="16" y1="17" x2="8" y2="17"/>
+      </svg>
+    </span>
     <div>
       <div class="file-name" id="fileName"></div>
       <div class="file-size text-muted" id="fileSize"></div>
@@ -26,7 +39,7 @@
 
   <div class="mt-3">
     <button type="submit" class="btn btn-primary btn-lg btn-block" id="submitBtn" disabled>
-      📥 Process File
+      Upload & Process
     </button>
   </div>
 </form>
