@@ -58,6 +58,7 @@ app_state = {
     "pipeline_shared": None,  # shared state for the running pipeline
     "sse_events": [],       # SSE event queue
     "sse_lock": threading.Lock(),
+    "shared_lock": threading.Lock(), # Lock for pipeline shared state
 }
 
 
@@ -679,68 +680,78 @@ def generate_batch_pdf(batch):
 # ─── Pipeline Workers ───────────────────────────────────────
 
 def db_checker_worker(specs, sql_cfg, val_params, db_config, shared):
-    trino_host, trino_port, trino_username, trino_password = db_config
-    base_sql = ""
-    if sql_cfg["source"] == "file":
-        with open(os.path.join(SQL_DIR, sql_cfg["file"]), 'r', encoding='utf-8') as f:
-            base_sql = f.read()
-    else:
-        base_sql = sql_cfg["custom_sql"]
     try:
-        engine = create_engine(
-            f'trino://{trino_username}:{urllib.parse.quote(trino_password)}@{trino_host}:{trino_port}/',
-            connect_args={'http_scheme': 'https'})
-    except Exception as e:
-        push_sse("status", {"text": f"🚨 DB Connection Error: {e}"})
-        shared["is_done"] = True
-        return
+        trino_host, trino_port, trino_username, trino_password = db_config
+        base_sql = ""
+        if sql_cfg["source"] == "file":
+            with open(os.path.join(SQL_DIR, sql_cfg["file"]), 'r', encoding='utf-8') as f:
+                base_sql = f.read()
+        else:
+            base_sql = sql_cfg["custom_sql"]
+        try:
+            engine = create_engine(
+                f'trino://{trino_username}:{urllib.parse.quote(trino_password)}@{trino_host}:{trino_port}/',
+                connect_args={'http_scheme': 'https'})
+        except Exception as e:
+            push_sse("status", {"text": f"🚨 DB Connection Error: {e}"})
+            with app_state["shared_lock"]:
+                shared["is_done"] = True
+            return
 
-    # Test connection first
-    push_sse("status", {"text": "🔗 Testing Trino connection..."})
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        push_sse("status", {"text": "Trino connected!"})
-    except Exception as e:
-        push_sse("status", {"text": f"Cannot connect to Trino: {e}"})
-        for spec_str in specs:
-            push_sse("tracker_update", {"spec": spec_str, "field": "Data Check", "value": "No DB"})
-            push_sse("tracker_update", {"spec": spec_str, "field": "Result", "value": "DB Error"})
-            shared["completed_count"] += 1
-            push_sse("progress", {"completed": shared["completed_count"]})
-        shared["is_done"] = True
-        return
-
-    for spec_str in specs:
-        ev_type, plc_id = spec_str.split(" | ")
-        push_sse("status", {"text": f"🔍 Checking: {ev_type} ({plc_id})"})
-        push_sse("tracker_update", {"spec": spec_str, "field": "Data Check", "value": "Checking..."})
-        final_sql = prepare_spec_sql(base_sql, ev_type, plc_id)
-        formatted_sql = final_sql.format(dt=val_params["date"], extra_where_conditions="")
-        check_sql = f"SELECT 1 FROM ({formatted_sql}) AS cq LIMIT 1"
+        # Test connection first
+        push_sse("status", {"text": "🔗 Testing Trino connection..."})
         try:
             with engine.connect() as conn:
-                res = conn.execute(text(check_sql)).fetchone()
-                has_data = bool(res)
+                conn.execute(text("SELECT 1"))
+            push_sse("status", {"text": "Trino connected!"})
         except Exception as e:
-            has_data = False
-            push_sse("tracker_update", {"spec": spec_str, "field": "Data Check", "value": f"🚨 Query Error"})
+            push_sse("status", {"text": f"Cannot connect to Trino: {e}"})
+            for spec_str in specs:
+                push_sse("tracker_update", {"spec": spec_str, "field": "Data Check", "value": "No DB"})
+                push_sse("tracker_update", {"spec": spec_str, "field": "Result", "value": "DB Error"})
+                with app_state["shared_lock"]:
+                    shared["completed_count"] += 1
+                push_sse("progress", {"completed": shared["completed_count"]})
+                time.sleep(0.01) # Avoid flooding SSE too fast
+            with app_state["shared_lock"]:
+                shared["is_done"] = True
+            return
 
-        shared["checked_count"] += 1
-        if has_data:
-            shared["found_count"] += 1
-            shared["queue"].append(spec_str)
-            push_sse("tracker_update", {"spec": spec_str, "field": "Data Check", "value": "Found"})
-            push_sse("tracker_update", {"spec": spec_str, "field": "AI", "value": "Queued"})
-        else:
-            push_sse("tracker_update", {"spec": spec_str, "field": "Data Check", "value": "No Data"})
-            push_sse("tracker_update", {"spec": spec_str, "field": "Result", "value": "Skipped"})
-            shared["completed_count"] += 1
-            push_sse("progress", {"completed": shared["completed_count"]})
-        time.sleep(0.1)
+        for spec_str in specs:
+            ev_type, plc_id = spec_str.split(" | ")
+            push_sse("status", {"text": f"🔍 Checking: {ev_type} ({plc_id})"})
+            push_sse("tracker_update", {"spec": spec_str, "field": "Data Check", "value": "Checking..."})
+            final_sql = prepare_spec_sql(base_sql, ev_type, plc_id)
+            formatted_sql = final_sql.format(dt=val_params["date"], extra_where_conditions="")
+            check_sql = f"SELECT 1 FROM ({formatted_sql}) AS cq LIMIT 1"
+            try:
+                with engine.connect() as conn:
+                    res = conn.execute(text(check_sql)).fetchone()
+                    has_data = bool(res)
+            except Exception as e:
+                has_data = False
+                push_sse("tracker_update", {"spec": spec_str, "field": "Data Check", "value": f"🚨 Query Error"})
 
-    push_sse("status", {"text": f"DB scan done. Found {shared['found_count']}/{len(specs)}"})
-    shared["is_done"] = True
+            with app_state["shared_lock"]:
+                shared["checked_count"] += 1
+            if has_data:
+                with app_state["shared_lock"]:
+                    shared["found_count"] += 1
+                    shared["queue"].append(spec_str)
+                push_sse("tracker_update", {"spec": spec_str, "field": "Data Check", "value": "Found"})
+                push_sse("tracker_update", {"spec": spec_str, "field": "AI", "value": "Queued"})
+            else:
+                push_sse("tracker_update", {"spec": spec_str, "field": "Data Check", "value": "No Data"})
+                push_sse("tracker_update", {"spec": spec_str, "field": "Result", "value": "Skipped"})
+                with app_state["shared_lock"]:
+                    shared["completed_count"] += 1
+                push_sse("progress", {"completed": shared["completed_count"]})
+            time.sleep(0.1)
+
+    finally:
+        with app_state["shared_lock"]:
+            shared["is_done"] = True
+        push_sse("status", {"text": f"DB scan ended. Found {shared.get('found_count',0)}/{len(specs)}"})
 
 
 def ai_worker(shared, full_df):
@@ -826,22 +837,33 @@ def ai_worker(shared, full_df):
                 else:
                     push_sse("tracker_update", {"spec": spec_str, "field": "AI", "value": "No JSON"})
                     push_sse("tracker_update", {"spec": spec_str, "field": "Result", "value": "AI Error"})
-                    shared["completed_count"] += 1
+                    with app_state["shared_lock"]:
+                        shared["completed_count"] += 1
                     push_sse("progress", {"completed": shared["completed_count"]})
             except Exception as e:
                 err_msg = f"{type(e).__name__}: {str(e)[:40]}"
-                push_sse("tracker_update", {"spec": spec_str, "field": "AI", "value": f"{type(e).__name__}"})
+                push_sse("tracker_update", {"spec": spec_str, "field": "AI", "value": "🚨 AI Error"})
                 push_sse("tracker_update", {"spec": spec_str, "field": "Result", "value": f"{err_msg}"})
-                shared["completed_count"] += 1
+                with app_state["shared_lock"]:
+                    shared["completed_count"] += 1
                 push_sse("progress", {"completed": shared["completed_count"]})
             time.sleep(0.1)
-        elif shared["is_done"] and not shared["queue"]:
-            # Don't exit yet if GX workers are still active — they might retry items back
-            if shared["gx_active_count"] == 0 and not shared["ai_queue"]:
+        
+        # Termination check
+        with app_state["shared_lock"]:
+            is_done = shared["is_done"]
+            q_empty = not shared["queue"]
+            gx_active = shared["gx_active_count"]
+            ai_q_empty = not shared["ai_queue"]
+
+        if is_done and q_empty:
+            if gx_active == 0 and ai_q_empty:
                 break
             else:
                 time.sleep(0.5)
-    shared["ai_is_done"] = True
+    
+    with app_state["shared_lock"]:
+        shared["ai_is_done"] = True
 
 
 def gx_worker(shared, val_params_tuple, sql_cfg, db_config):
@@ -926,24 +948,26 @@ def gx_worker(shared, val_params_tuple, sql_cfg, db_config):
         except Exception as e:
             if item:
                 spec_str = item["spec_str"]
-                retries = shared["retry_count"].get(spec_str, 0)
-                if retries < 1:
-                    shared["retry_count"][spec_str] = retries + 1
-                    shared["last_gx_error"][spec_str] = f"{type(e).__name__}: {str(e)}"
-                    push_sse("tracker_update", {"spec": spec_str, "field": "GX", "value": "Retrying AI..."})
-                    shared["queue"].insert(0, spec_str)
-                else:
-                    push_sse("tracker_update", {"spec": spec_str, "field": "GX", "value": "Error"})
-                    push_sse("tracker_update", {"spec": spec_str, "field": "Result", "value": f"{type(e).__name__}"})
-                    shared["results"].append({
-                        "id": str(uuid.uuid4()), "name": item["suite_name"],
-                        "ev_type": item["ev_type"], "plc_id": item["plc_id"],
-                        "status": "ERROR", "error": str(e), "traceback": traceback.format_exc(),
-                        "spec_str": spec_str, "log_data": {},
-                    })
-                    shared["completed_count"] += 1
-                    push_sse("progress", {"completed": shared["completed_count"]})
-                shared["gx_active_count"] -= 1
+                with app_state["shared_lock"]:
+                    retries = shared["retry_count"].get(spec_str, 0)
+                    if retries < 1:
+                        shared["retry_count"][spec_str] = retries + 1
+                        shared["last_gx_error"][spec_str] = f"{type(e).__name__}: {str(e)}"
+                        push_sse("tracker_update", {"spec": spec_str, "field": "GX", "value": "Retrying AI..."})
+                        shared["queue"].insert(0, spec_str)
+                        shared["gx_active_count"] -= 1
+                    else:
+                        push_sse("tracker_update", {"spec": spec_str, "field": "GX", "value": "Error"})
+                        push_sse("tracker_update", {"spec": spec_str, "field": "Result", "value": f"{type(e).__name__}"})
+                        shared["results"].append({
+                            "id": str(uuid.uuid4()), "name": item["suite_name"],
+                            "ev_type": item["ev_type"], "plc_id": item["plc_id"],
+                            "status": "ERROR", "error": str(e), "traceback": traceback.format_exc(),
+                            "spec_str": spec_str, "log_data": {},
+                        })
+                        shared["completed_count"] += 1
+                        shared["gx_active_count"] -= 1
+                push_sse("progress", {"completed": shared["completed_count"]})
             time.sleep(1)
 
 
@@ -995,7 +1019,12 @@ def upload_page():
                 return redirect(url_for('upload_page'))
             rename_map = {'M': 'Mandatory', 'Data type': 'Type', 'value': 'Allowed Values', 'key': 'Field Name'}
             df.rename(columns=rename_map, inplace=True)
-            specs = df[['event type', 'placement_id']].drop_duplicates().dropna()
+            # Normalize: strip whitespace from IDs to ensure stable matching
+            specs = df[['event type', 'placement_id']].copy()
+            specs['event type'] = specs['event type'].astype(str).str.strip()
+            specs['placement_id'] = specs['placement_id'].astype(str).str.strip()
+            specs = specs.drop_duplicates().dropna()
+            
             spec_strings = [f"{r['event type']} | {r['placement_id']}" for _, r in specs.iterrows()]
 
             app_state["full_df"] = df
@@ -1079,7 +1108,12 @@ def start_pipeline():
 
     # Monitor thread: finalizes batch when done
     def finalize_when_done():
+        start_time = time.time()
+        timeout = 3600 # 1 hour safety timeout
         while not shared["ai_is_done"] or shared["gx_active_count"] > 0 or shared["ai_queue"]:
+            if time.time() - start_time > timeout:
+                push_sse("status", {"text": "⚠️ Pipeline monitor safety timeout (1h) reached. Finalizing with current results."})
+                break
             time.sleep(1)
         time.sleep(1)  # extra wait for last results
         batch = {

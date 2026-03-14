@@ -133,15 +133,16 @@ function addLog(msg, type) {
 
 function updateCell(specStr, field, content) {
   const rows = document.querySelectorAll('#trackerBody tr');
+  const target = specStr.trim();
   for (const row of rows) {
-    if (row.dataset.spec === specStr) {
+    if (row.dataset.spec.trim() === target) {
       const cell = row.querySelector('.col-' + field);
       if (cell) cell.innerHTML = content;
       if (field === 'result') {
         row.className = '';
         if (content.includes('Passed')) row.classList.add('row-pass');
         else if (content.includes('Mismatch')) row.classList.add('row-fail');
-        else if (content.includes('Error')) row.classList.add('row-error');
+        else if (content.includes('Error') || content.includes('No DB')) row.classList.add('row-error');
         else if (content.includes('Skipped')) row.classList.add('row-skip');
       }
       break;
