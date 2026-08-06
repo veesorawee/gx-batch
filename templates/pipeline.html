@@ -18,6 +18,9 @@
 <div class="pipeline-status-bar" id="statusBar">
   <div class="dot active" id="statusDot"></div>
   <span id="statusText" style="font-size:13.5px;font-weight:500;">Connecting to pipeline...</span>
+  <button id="stopBtn" class="btn btn-sm btn-outline-danger" style="margin-left: auto; font-size: 11px; padding: 2px 8px;">
+    Stop Process
+  </button>
 </div>
 
 <!-- Progress Bar -->
@@ -253,5 +256,30 @@ evtSource.onerror = function() {
   document.getElementById('statusDot').style.background = 'var(--amber)';
   addLog('SSE connection lost', 'error');
 };
+
+document.getElementById('stopBtn').addEventListener('click', function() {
+  if (!confirm('Are you sure you want to stop the current process?')) return;
+  
+  this.disabled = true;
+  this.textContent = 'Stopping...';
+  
+  fetch("{{ url_for('stop_pipeline') }}", { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.status === 'success') {
+        addLog('Cancellation requested by user', 'warning');
+      } else {
+        alert('Error: ' + data.message);
+        this.disabled = false;
+        this.textContent = 'Stop Process';
+      }
+    })
+    .catch(err => {
+      console.error(err);
+      alert('Failed to send stop request');
+      this.disabled = false;
+      this.textContent = 'Stop Process';
+    });
+});
 </script>
 {% endblock %}

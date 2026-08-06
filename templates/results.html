@@ -231,11 +231,22 @@
   </button>
   <div class="accordion-body">
     {% if run.status == 'ERROR' %}
-    <div class="alert alert-error">{{ run.error }}</div>
+    <div class="alert alert-error">
+      <strong>Error:</strong> {{ run.error }}
+    </div>
     {% if run.traceback %}
-    <div class="code-block">{{ run.traceback }}</div>
+    <div class="accordion">
+      <button class="accordion-header" type="button">
+        Error Traceback <span class="arrow">▶</span>
+      </button>
+      <div class="accordion-body">
+        <div class="code-block">{{ run.traceback }}</div>
+      </div>
+    </div>
     {% endif %}
-    {% else %}
+    {% endif %}
+
+    {% if run.status != 'ERROR' or run.failed_expectations %}
     <div class="text-sm text-muted mb-2">
       {{ run.timestamp }} · Run: {{ run.run_name or '–' }}
     </div>
@@ -275,6 +286,7 @@
       </tbody>
     </table>
     {% endif %}
+    {% endif %}
 
     <!-- AI Prompt (collapsed) -->
     {% if run.ai_prompt %}
@@ -299,18 +311,18 @@
     </div>
     {% endif %}
 
-    {% if run.process_log %}
+    {% if run.process_log or (run.log_data and run.log_data.process_log) %}
     <div class="accordion">
       <button class="accordion-header" type="button">
         Process Log <span class="arrow">▶</span>
       </button>
       <div class="accordion-body">
-        {% for entry in run.process_log %}
+        {% set plog = run.process_log or run.log_data.process_log %}
+        {% for entry in plog %}
         <div class="text-sm" style="margin-bottom:4px;">{{ entry|safe }}</div>
         {% endfor %}
       </div>
     </div>
-    {% endif %}
     {% endif %}
   </div>
 </div>

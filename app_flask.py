@@ -59,6 +59,7 @@ app_state = {
     "sse_events": [],       # SSE event queue
     "sse_lock": threading.Lock(),
     "shared_lock": threading.Lock(), # Lock for pipeline shared state
+    "gx_lock": threading.Lock(),     # Lock for Great Expectations operations
 }
 
 
@@ -136,7 +137,10 @@ def run_validation_process(sql_input, expectations_input, suite_name, db_config,
                            val_params, flatten_map=None, batch_id=None):
     trino_host, trino_port, trino_username, trino_password = db_config
     db_query_date, SEGMENT_BY_COLUMNS = val_params
-    context = gx.get_context(project_root_dir=os.getcwd())
+    
+    with app_state["gx_lock"]:
+        context = gx.get_context(project_root_dir=os.getcwd())
+        
     checkpoint_result, data_samples = None, None
     docs_info = {"main": None, "segments": {}, "local_path": None}
     process_log = []
@@ -192,8 +196,9 @@ def run_validation_process(sql_input, expectations_input, suite_name, db_config,
     else:
         segments_to_run = [{}]
 
-    context = gx.get_context()
-    context.add_or_update_expectation_suite(suite_name)
+    with app_state["gx_lock"]:
+        context = gx.get_context()
+        context.add_or_update_expectation_suite(suite_name)
     validations_to_run = []
     data_samples = {}
 
@@ -210,11 +215,12 @@ def run_validation_process(sql_input, expectations_input, suite_name, db_config,
                     def parse_to_dict(val):
                         if isinstance(val, dict): return val
                         if isinstance(val, str):
+                            if not val.strip(): return None
                             try:
                                 parsed = json.loads(val)
                                 if isinstance(parsed, str): parsed = json.loads(parsed)
                                 if isinstance(parsed, dict): return parsed
-                            except: pass
+                            except Exception: pass
                         return None
                     df[col_name] = df[col_name].apply(parse_to_dict)
             df = flatten_json_columns(df, keys_to_flatten_map)
@@ -236,30 +242,42 @@ def run_validation_process(sql_input, expectations_input, suite_name, db_config,
 
             ds_suffix = f"{batch_id}_{seg_name}" if batch_id else seg_name
             data_samples[seg_name] = df.head(5).to_dict('records')
-            datasource = context.sources.add_or_update_pandas(f"pandas_ds_{ds_suffix}")
-            data_asset = datasource.add_dataframe_asset(name=f"asset_{ds_suffix}")
+            with app_state["gx_lock"]:
+                datasource = context.sources.add_or_update_pandas(f"pandas_ds_{ds_suffix}")
+                data_asset = datasource.add_dataframe_asset(name=f"asset_{ds_suffix}")
+            
             batch_request = data_asset.build_batch_request(dataframe=df)
             validator = context.get_validator(batch_request=batch_request, expectation_suite_name=suite_name)
+            
             for exp_config in expectations_list:
-                getattr(validator, exp_config['expectation_type'])(**exp_config["kwargs"])
-            validator.save_expectation_suite(discard_failed_expectations=False)
+                try:
+                    getattr(validator, exp_config['expectation_type'])(**exp_config["kwargs"])
+                except Exception as ex_err:
+                    col = exp_config["kwargs"].get("column") or exp_config["kwargs"].get("column_set")
+                    process_log.append(f"⚠️ Rule failed to apply ({exp_config['expectation_type']}) on column '{col}': {ex_err}")
+                    
+            with app_state["gx_lock"]:
+                validator.save_expectation_suite(discard_failed_expectations=False)
             validations_to_run.append({"batch_request": batch_request, "expectation_suite_name": suite_name})
         except Exception as e:
+            import traceback as tb
             process_log.append(f"🚨 Segment {seg_name} failed: {e}")
+            process_log.append(f"<pre>{tb.format_exc()}</pre>")
             continue
 
     if not validations_to_run:
         process_log.append("🚨 No valid batches were created.")
         return None, None, None, process_log, run_name, None
 
-    checkpoint = context.add_or_update_checkpoint(
-        name=f"checkpoint_{run_name}", run_name_template=run_name,
-        action_list=[
-            {"name": "store_validation_result", "action": {"class_name": "StoreValidationResultAction"}},
-            {"name": "store_evaluation_params", "action": {"class_name": "StoreEvaluationParametersAction"}},
-            {"name": "update_data_docs", "action": {"class_name": "UpdateDataDocsAction"}},
-        ])
-    checkpoint_result = checkpoint.run(validations=validations_to_run)
+    with app_state["gx_lock"]:
+        checkpoint = context.add_or_update_checkpoint(
+            name=f"checkpoint_{run_name}", run_name_template=run_name,
+            action_list=[
+                {"name": "store_validation_result", "action": {"class_name": "StoreValidationResultAction"}},
+                {"name": "store_evaluation_params", "action": {"class_name": "StoreEvaluationParametersAction"}},
+                {"name": "update_data_docs", "action": {"class_name": "UpdateDataDocsAction"}},
+            ])
+        checkpoint_result = checkpoint.run(validations=validations_to_run)
     context.build_data_docs()
     docs_sites = context.get_docs_sites_urls()
     if docs_sites:
@@ -718,6 +736,9 @@ def db_checker_worker(specs, sql_cfg, val_params, db_config, shared):
             return
 
         for spec_str in specs:
+            if shared.get("cancel_requested"):
+                push_sse("status", {"text": "🛑 DB Checker cancelled by user."})
+                break
             ev_type, plc_id = spec_str.split(" | ")
             push_sse("status", {"text": f"🔍 Checking: {ev_type} ({plc_id})"})
             push_sse("tracker_update", {"spec": spec_str, "field": "Data Check", "value": "Checking..."})
@@ -756,6 +777,9 @@ def db_checker_worker(specs, sql_cfg, val_params, db_config, shared):
 
 def ai_worker(shared, full_df):
     while True:
+        if shared.get("cancel_requested"):
+            push_sse("status", {"text": "🛑 AI worker stopping..."})
+            break
         if shared["queue"]:
             spec_str = shared["queue"].pop(0)
             ev_type, plc_id = spec_str.split(" | ")
@@ -797,7 +821,7 @@ def ai_worker(shared, full_df):
                         response = model.generate_content(prompt)
                         break
                     except Exception as e:
-                        if "429" in str(e) or "ResourceExhausted" in str(e):
+                        if any(x in str(e) for x in ["429", "500", "ResourceExhausted", "InternalServerError"]):
                             wait_time = 5 * (2 ** attempt)
                             push_sse("tracker_update", {"spec": spec_str, "field": "AI", "value": f"⏳ Rate limited... {wait_time}s"})
                             time.sleep(wait_time)
@@ -841,12 +865,34 @@ def ai_worker(shared, full_df):
                         shared["completed_count"] += 1
                     push_sse("progress", {"completed": shared["completed_count"]})
             except Exception as e:
-                err_msg = f"{type(e).__name__}: {str(e)[:40]}"
-                push_sse("tracker_update", {"spec": spec_str, "field": "AI", "value": "🚨 AI Error"})
-                push_sse("tracker_update", {"spec": spec_str, "field": "Result", "value": f"{err_msg}"})
+                tb = traceback.format_exc()
+                err_name = type(e).__name__
+                err_msg = str(e)
                 with app_state["shared_lock"]:
-                    shared["completed_count"] += 1
-                push_sse("progress", {"completed": shared["completed_count"]})
+                    retries = shared["retry_count"].get(spec_str, 0)
+                    if retries < 2:
+                        shared["retry_count"][spec_str] = retries + 1
+                        push_sse("tracker_update", {"spec": spec_str, "field": "AI", "value": f"⏳ AI Retry {retries+1}/2"})
+                        shared["queue"].append(spec_str)
+                    else:
+                        push_sse("tracker_update", {"spec": spec_str, "field": "AI", "value": "🚨 AI Error"})
+                        push_sse("tracker_update", {"spec": spec_str, "field": "Result", "value": f"{err_name}: {err_msg[:40]}"})
+                        
+                        run_id = str(uuid.uuid4())
+                        log_fname = f"run_{shared.get('batch_id','x')}_AI_ERROR_{run_id[:8]}.json"
+                        log_fpath = os.path.join(LOGS_DIR, log_fname)
+                        with open(log_fpath, 'w', encoding='utf-8') as f:
+                            json.dump({
+                                "status": "AI_ERROR",
+                                "error": f"{err_name}: {err_msg}",
+                                "traceback": tb,
+                                "spec_str": spec_str,
+                                "prompt": prompt if 'prompt' in locals() else "",
+                                "batch_id": shared.get("batch_id")
+                            }, f, indent=4)
+                        
+                        shared["completed_count"] += 1
+                        push_sse("progress", {"completed": shared["completed_count"]})
             time.sleep(0.1)
         
         # Termination check
@@ -868,6 +914,9 @@ def ai_worker(shared, full_df):
 
 def gx_worker(shared, val_params_tuple, sql_cfg, db_config):
     while True:
+        if shared.get("cancel_requested"):
+            push_sse("status", {"text": "🛑 GX worker stopping..."})
+            break
         item = None
         try:
             if shared["ai_queue"]:
@@ -893,8 +942,12 @@ def gx_worker(shared, val_params_tuple, sql_cfg, db_config):
 
                 run_id = str(uuid.uuid4())
                 status = "SUCCESS" if cp_result and cp_result.success else ("ERROR" if cp_result is None else "FAILURE")
-                log_data = cp_result.to_json_dict() if cp_result else {"error": "Process failed"}
-
+                log_data = cp_result.to_json_dict() if cp_result else {"error": "Process failed", "status": status}
+                
+                # Ensure process_log and data_samples are preserved in the log file
+                log_data["process_log"] = proc_log
+                log_data["data_samples"] = data_samples
+                
                 run_data = {
                     "id": run_id, "name": suite_name,
                     "timestamp": datetime.datetime.now().isoformat(),
@@ -948,6 +1001,7 @@ def gx_worker(shared, val_params_tuple, sql_cfg, db_config):
         except Exception as e:
             if item:
                 spec_str = item["spec_str"]
+                tb = traceback.format_exc()
                 with app_state["shared_lock"]:
                     retries = shared["retry_count"].get(spec_str, 0)
                     if retries < 1:
@@ -959,11 +1013,34 @@ def gx_worker(shared, val_params_tuple, sql_cfg, db_config):
                     else:
                         push_sse("tracker_update", {"spec": spec_str, "field": "GX", "value": "Error"})
                         push_sse("tracker_update", {"spec": spec_str, "field": "Result", "value": f"{type(e).__name__}"})
+                        
+                        run_id = str(uuid.uuid4())
+                        error_log_data = {
+                            "error": str(e),
+                            "traceback": tb,
+                            "status": "ERROR",
+                            "spec_str": spec_str,
+                            "ev_type": item["ev_type"],
+                            "plc_id": item["plc_id"],
+                            "uploaded_filename": shared.get("uploaded_filename", ""),
+                            "spec_file_path": item.get("spec_file_path", ""),
+                        }
+                        
+                        # Write error log to file
+                        safe_ev = item["ev_type"].replace('/', '_')
+                        safe_plc = item["plc_id"].replace('/', '_')
+                        log_fname = f"run_{shared.get('batch_id','x')}_{safe_ev}_{safe_plc}_{run_id[:8]}.json"
+                        log_fpath = os.path.join(LOGS_DIR, log_fname)
+                        with open(log_fpath, 'w', encoding='utf-8') as f:
+                            json.dump(error_log_data, f, indent=4)
+
                         shared["results"].append({
-                            "id": str(uuid.uuid4()), "name": item["suite_name"],
+                            "id": run_id, "name": item["suite_name"],
                             "ev_type": item["ev_type"], "plc_id": item["plc_id"],
-                            "status": "ERROR", "error": str(e), "traceback": traceback.format_exc(),
-                            "spec_str": spec_str, "log_data": {},
+                            "status": "ERROR", "error": str(e), "traceback": tb,
+                            "spec_str": spec_str, "log_data": error_log_data,
+                            "log_filepath": log_fpath,
+                            "process_log": ["🚨 Critical error in GX worker outside process loop"]
                         })
                         shared["completed_count"] += 1
                         shared["gx_active_count"] -= 1
@@ -1074,6 +1151,7 @@ def start_pipeline():
         "gx_active_count": 0, "batch_id": batch_id,
         "retry_count": {}, "last_gx_error": {},
         "tracker": {},
+        "cancel_requested": False,
         "uploaded_filename": app_state.get("uploaded_filename", ""),
     }
     for spec in selected:
@@ -1111,6 +1189,9 @@ def start_pipeline():
         start_time = time.time()
         timeout = 3600 # 1 hour safety timeout
         while not shared["ai_is_done"] or shared["gx_active_count"] > 0 or shared["ai_queue"]:
+            if shared.get("cancel_requested"):
+                push_sse("status", {"text": "🛑 Pipeline stopped. Wrapping up records..."})
+                break
             if time.time() - start_time > timeout:
                 push_sse("status", {"text": "⚠️ Pipeline monitor safety timeout (1h) reached. Finalizing with current results."})
                 break
@@ -1134,6 +1215,8 @@ def start_pipeline():
 
         app_state["batches"][batch_id] = batch
         app_state["batch_history"].insert(0, batch)
+        if shared.get("cancel_requested"):
+            push_sse("status", {"text": "Pipeline stopped by user."})
         push_sse("done", {"batch_id": batch_id})
 
     threading.Thread(target=finalize_when_done, daemon=True).start()
@@ -1168,6 +1251,16 @@ def pipeline_stream():
             time.sleep(0.3)
     return Response(event_stream(), mimetype='text/event-stream',
                     headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+
+
+@app.route('/stop', methods=['POST'])
+def stop_pipeline():
+    shared = app_state.get("pipeline_shared")
+    if shared:
+        with app_state["shared_lock"]:
+            shared["cancel_requested"] = True
+        return jsonify({"status": "success", "message": "Cancellation requested"})
+    return jsonify({"status": "error", "message": "No active pipeline"}), 404
 
 
 # --- Migrate old waived rules format to new format ---

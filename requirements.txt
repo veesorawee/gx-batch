@@ -1,0 +1,11 @@
+streamlit
+pandas
+great-expectations==0.18.22
+google-generativeai
+python-dotenv
+sqlalchemy
+trino
+tabulate
+openpyxl
+weasyprint
+pypdf

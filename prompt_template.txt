@@ -12,10 +12,12 @@ RULES:
    c) Numeric example (`300`, `#.##`, `{{unixtime}}`) → skip, not_null is enough
    d) Array example (`[ 'auABCD' ]`) → `expect_column_values_to_match_json_schema` with `{{"type":"array"}}` only
    e) Display text (Thai labels, `฿300`) → `in_set` only if clearly fixed
-6. Type='array': use `expect_column_values_to_match_json_schema` with `{{"type":"array"}}`. Include `"additionalProperties": false`.
-7. DO NOT use `expect_column_values_to_be_json_parseable`.
-8. Row conditions: use `row_condition` + `"condition_parser":"pandas"`. String literals MUST use escaped double quotes.
-9. CRITICAL JSON regex rule: backslash MUST be escaped as double backslash in JSON strings. Example: to match whitespace, write "\\s" as "\\\\s" in JSON. Prefer SIMPLE regex (e.g. "^https?://.*" for URLs, "^[A-Z]+-\\d+$" for IDs) to avoid escape problems.
+   f) Business Logic / Dynamic data (e.g. `matched {{ array constraints... }}` or `{{dada fetch ...}}`) → Evaluate if this is a fetching instruction. If so, DO NOT use `in_set`. Check the `Type` field: if Type='array', use `expect_column_values_to_match_json_schema` with `{{"type":"array"}}`.
+6. ALWAYS check the `Type` field for every column before deciding on a rule. If the spec says Type='array' but Allowed Values looks like business logic, trust the Type and use `expect_column_values_to_match_json_schema`.
+7. Type='array': use `expect_column_values_to_match_json_schema` with `{{"type":"array"}}`. Include `"additionalProperties": false`.
+8. DO NOT use `expect_column_values_to_be_json_parseable`.
+9. Row conditions: use `row_condition` + `"condition_parser":"pandas"`. String literals MUST use escaped double quotes.
+10. CRITICAL JSON regex rule: backslash MUST be escaped as double backslash in JSON strings. Example: to match whitespace, write "\\s" as "\\\\s" in JSON. Prefer SIMPLE regex (e.g. "^https?://.*" for URLs, "^[A-Z]+-\\d+$" for IDs) to avoid escape problems.
 
 SPECIFICATION:
 {auto_spec_input}
